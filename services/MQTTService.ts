@@ -381,7 +381,6 @@ class MQTTService {
     }
 
     this.updateDeviceStatus({
-      tankStatus,
       waterLevel,
     });
 }
