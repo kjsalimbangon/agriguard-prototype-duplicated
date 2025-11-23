@@ -14,11 +14,14 @@ export function DeviceStatus() {
   };
 
   const getWaterIcon = () => {
-    if (deviceStatus?.waterLevel === undefined || deviceStatus?.waterLevel === null) return <Droplets size={16} color="#999" />;
-    
+    if (deviceStatus?.waterLevel === undefined || deviceStatus?.waterLevel === null) {
+      return <Droplets size={16} color="#999" />;
+  }
+
     const level = deviceStatus.waterLevel;
-    const color = level === 'full'? '#2196F3' : level === 'empty' ? '#F2C94C' : '#FF6B6B';
+    const color = level > 50 ? '#2196F3' : level > 20 ? '#F2C94C' : '#FF6B6B';
     return <Droplets size={16} color={color} />;
+
   };
 
   const getStatusColor = () => {
