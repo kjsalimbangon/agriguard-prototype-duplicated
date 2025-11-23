@@ -259,6 +259,7 @@ class MQTTService {
         this.handleStatusUpdate(message);
       });
       await this.client.subscribe('/esp32/sprinkler/sensor/tank', (message) => {
+        console.log("Tank topic received:", message);
         this.handleTankUpdate(message);
       });
 
