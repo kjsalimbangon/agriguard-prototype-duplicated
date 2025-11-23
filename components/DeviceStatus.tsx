@@ -17,7 +17,7 @@ export function DeviceStatus() {
     if (!deviceStatus?.waterLevel) return <Droplets size={16} color="#999" />;
     
     const level = deviceStatus.waterLevel;
-    const color = level > 50 ? '#2196F3' : level > 20 ? '#F2C94C' : '#FF6B6B';
+    const color = level === 'full'? '#2196F3' : level === 'empty' ? '#F2C94C' : '#FF6B6B';
     return <Droplets size={16} color={color} />;
   };
 
@@ -71,9 +71,13 @@ export function DeviceStatus() {
           
           <View style={styles.metric}>
             {getWaterIcon()}
-            <Text style={styles.metricText}>
-              {deviceStatus.waterLevel ? `${deviceStatus.waterLevel}%` : 'N/A'}
-            </Text>
+             <Text style={styles.metricText}>
+              {deviceStatus.waterLevel === 'full'
+              ? 'Full'
+              : deviceStatus.waterLevel === 'empty'
+              ? 'Empty'
+              : 'Unknown'}
+             </Text>
           </View>
           
           <View style={styles.metric}>
