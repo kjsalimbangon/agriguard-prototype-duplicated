@@ -257,6 +257,10 @@ class MQTTService {
       await this.client.subscribe('/esp32/sprinkler/status', (message) => {
         this.handleStatusUpdate(message);
       });
+      await this.client.subscribe('/esp32/sprinkler/sensor/tank', (message) => {
+        this.handleTankUpdate(message);
+      });
+
 
       this.resetTimeout();
       console.log('MQTT Service initialized successfully');
