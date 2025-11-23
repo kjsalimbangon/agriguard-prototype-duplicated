@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "AgriGuard",
+    "slug": "agriguard-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "myapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+
+    "android": {
+      "package": "com.agriguard.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#8BA840"
+      },
+
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "INTERNET"
+      ]
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.agriguard.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "assetBundlePatterns": [
+      "**/*",
+      "assets/model/*"
+    ],
+    "plugins": [
+      "expo-camera",
+      "expo-router",
+      "expo-font",
+      "expo-web-browser",
+      "expo-notifications"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2a243be7-58ad-42a0-96f8-8d4c775aea5a"
+      }
+    }
+  }
+}
