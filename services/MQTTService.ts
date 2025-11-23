@@ -364,6 +364,26 @@ class MQTTService {
       }
     }
   }
+  private handleTankUpdate(message: string): void {
+    const val = message.trim();
+
+    let tankStatus: 'full' | 'empty' | 'unknown' = 'unknown';
+    let waterLevel = 0;
+
+    if (val === '1') {
+      tankStatus = 'full';
+      waterLevel = 100;
+    } else if (val === '0') {
+      tankStatus = 'empty';
+      waterLevel = 0;
+    }
+
+    this.updateDeviceStatus({
+      tankStatus,
+      waterLevel,
+    });
+}
+
 
   addStatusCallback(callback: (status: DeviceStatus) => void): void {
     this.statusCallbacks.push(callback);
