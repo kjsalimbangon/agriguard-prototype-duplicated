@@ -368,6 +368,26 @@ export default function DetectScreen() {
                 >
                   <View style={styles.overlay}>
                     <View style={styles.targetFrame} />
+
+                      {boundingBoxes.map((box, i) => (
+                      <View
+                        key={i}
+                        style={{
+                          position: 'absolute',
+                          left: box.x,
+                          top: box.y,
+                          width: box.width,
+                          height: box.height,
+                          borderWidth: 2,
+                          borderColor: 'red',
+                          borderRadius: 4,
+                         }}
+                      >
+                    <Text style={{ color: 'red', backgroundColor: 'rgba(0,0,0,0.5)', fontSize: 12 }}>
+                      {box.label}
+                    </Text>
+                  </View>
+                 ))}
                     {isScanning && (
                       <View style={styles.scanningIndicator}>
                         <Text style={styles.scanningText}>AI Scanning Active</Text>
