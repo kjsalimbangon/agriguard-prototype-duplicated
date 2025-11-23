@@ -191,6 +191,7 @@ export interface DeviceStatus {
   deviceId: string;
   online: boolean;
   batteryLevel?: number;
+  tankStatus?: 'full' | 'empty' | 'unknown';
   waterLevel?: number;
   lastActivity: string;
   currentAction?: 'idle' | 'spraying' | 'error';
