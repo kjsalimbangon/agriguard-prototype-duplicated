@@ -89,7 +89,20 @@ export default function DetectScreen() {
         setNotificationData(result);
         setShowNotification(true);
         setPesticideImageUri(result.pesticideImageUri);
-
+      if (result.coco?.bbox) {
+        const [x, y, width, height] = result.coco.bbox;
+        // Scale to camera preview size if needed
+        // For now we assume same resolution; adjust if necessary
+        setBoundingBoxes([{
+          x,
+          y,
+          width,
+          height,
+          label: result.pestType,
+        }]);
+      } else {
+        setBoundingBoxes([]);
+        }
       }
     };
 
