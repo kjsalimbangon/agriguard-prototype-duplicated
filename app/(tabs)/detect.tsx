@@ -18,6 +18,13 @@ export default function DetectScreen() {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [detectionResults, setDetectionResults] = useState<DetectionResult | null>(null);
+  const [boundingBoxes, setBoundingBoxes] = useState<{
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+  }[]>([]);
   const [showNotification, setShowNotification] = useState(false);
   const [notificationData, setNotificationData] = useState<DetectionResult | null>(null);
   const [activeTab, setActiveTab] = useState<'camera' | 'history'>('camera');
