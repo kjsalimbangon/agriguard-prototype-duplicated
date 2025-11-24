@@ -12,7 +12,7 @@ import { useMQTT } from '@/hooks/useMQTT';
 
 export default function DashboardScreen() {
   const { isConnected } = useMQTT();
-  const { stats, isScanning, startScanning, stopScanning, refreshData, isLoading } = usePestDetection();
+  const { stats, isScanning, startScanning, stopScanning, refreshData, isLoading } = usePestDetection(cameraRef);
 
   // Refresh data when component mounts or becomes focused
   useEffect(() => {
