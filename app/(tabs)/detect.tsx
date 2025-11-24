@@ -9,14 +9,11 @@ import { DetectionHistory } from '@/components/DetectionHistory';
 import { PestDetectedModal } from '@/components/PestDetectedModal';
 import { usePestDetection } from '@/hooks/usePestDetection';
 import { DetectionResult } from '@/services/PestDetectionService';
-import { BoundingBox } from '@/components/BoundingBox';
 import { router } from 'expo-router';
 
 export default function DetectScreen() {
   const [hasPermission, requestPermission] = useCameraPermissions();
   const [cameraType, setCameraType] = useState<CameraType>('back');
-  const [previewWidth, setPreviewWidth] = useState(0);
-  const [previewHeight, setPreviewHeight] = useState(0);
   const [isCapturing, setIsCapturing] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -26,6 +23,7 @@ export default function DetectScreen() {
   const [activeTab, setActiveTab] = useState<'camera' | 'history'>('camera');
   const [showPestDetectedModal, setShowPestDetectedModal] = useState(false);
   const [modalDetectionResult, setModalDetectionResult] = useState<DetectionResult | null>(null);
+  const cameraRef = useRef(null);
   const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null);
 
   const { 
@@ -34,9 +32,8 @@ export default function DetectScreen() {
     stopScanning, 
     analyzeImage, 
     detectionHistory,
-    boundingBoxes,
     refreshData 
-  } = usePestScanner(cameraRef);
+  } = usePestDetection(cameraRef);
 
   useEffect(() => {
     requestPermission();
@@ -321,27 +318,10 @@ export default function DetectScreen() {
         <>
           {capturedImage ? (
             <View style={styles.resultContainer}>
-                  <View 
-                    style={{ width: '100%', height: '50%' }}
-                    onLayout={(e) => {
-                      setPreviewWidth(e.nativeEvent.layout.width);
-                      setPreviewHeight(e.nativeEvent.layout.height);
-                    }}
-                  >
-                    <Image 
-                      source={{ uri: capturedImage }}
-                      style={styles.capturedImage}
-                    />
-                    {detectionResults?.boundingBoxes && (
-                      <BoundingBox
-                        boxes={detectionResults.boundingBoxes}
-                        imageWidth={224}
-                        imageHeight={224}
-                        previewWidth={previewWidth}
-                        previewHeight={previewHeight}
-                      />
-                    )}
-                  </View>
+              <Image 
+                source={{ uri: capturedImage }}
+                style={styles.capturedImage}
+              />
               
               {isAnalyzing ? (
                 <View style={styles.analyzingContainer}>
@@ -361,28 +341,13 @@ export default function DetectScreen() {
           ) : (
             <View style={styles.cameraContainer}>
               {Platform.OS !== 'web' ? (
-                  <CameraView 
-                    style={styles.camera}
-                    facing={cameraType}
-                    ref={cameraRef}
-                    onLayout={(e) => {
-                      setPreviewWidth(e.nativeEvent.layout.width);
-                      setPreviewHeight(e.nativeEvent.layout.height);
-                    }}
-                  >
-                    
+                <CameraView 
+                  style={styles.camera}
+                  facing={cameraType}
+                  ref={cameraRef}
+                >
                   <View style={styles.overlay}>
                     <View style={styles.targetFrame} />
-
-                    {isScanning && boundingBoxes && (
-                      <BoundingBox
-                        boxes={detectionResults.boundingBoxes}
-                        imageWidth={224}         // model input
-                        imageHeight={224}
-                        previewWidth={previewWidth}
-                        previewHeight={previewHeight}
-                      />
-                    )}
                     {isScanning && (
                       <View style={styles.scanningIndicator}>
                         <Text style={styles.scanningText}>AI Scanning Active</Text>
