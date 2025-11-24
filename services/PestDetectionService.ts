@@ -223,7 +223,6 @@ class PestDetectionService {
       this.scanningInterval = null;
     }
   }
-
 }
 
 export const pestDetectionService = new PestDetectionService();
