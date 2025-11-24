@@ -51,7 +51,7 @@ class PestDetectionService {
     "person", "cell phone", "book", "clock", "scissors"
   ]);
 
-
+  
 
 
   private MIN_CONFIDENCE = 0.4;
