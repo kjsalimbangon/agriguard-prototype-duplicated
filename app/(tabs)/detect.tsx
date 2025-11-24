@@ -18,13 +18,8 @@ export default function DetectScreen() {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [detectionResults, setDetectionResults] = useState<DetectionResult | null>(null);
-  const [boundingBoxes, setBoundingBoxes] = useState<{
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  label: string;
-  }[]>([]);
+  const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
+  const [boundingBoxes, setBoundingBoxes] = useState([]);
   const [showNotification, setShowNotification] = useState(false);
   const [notificationData, setNotificationData] = useState<DetectionResult | null>(null);
   const [activeTab, setActiveTab] = useState<'camera' | 'history'>('camera');
@@ -369,25 +364,35 @@ export default function DetectScreen() {
                   <View style={styles.overlay}>
                     <View style={styles.targetFrame} />
 
-                      {boundingBoxes.map((box, i) => (
-                      <View
-                        key={i}
-                        style={{
-                          position: 'absolute',
-                          left: box.x,
-                          top: box.y,
-                          width: box.width,
-                          height: box.height,
-                          borderWidth: 2,
-                          borderColor: 'red',
-                          borderRadius: 4,
-                         }}
-                      >
-                    <Text style={{ color: 'red', backgroundColor: 'rgba(0,0,0,0.5)', fontSize: 12 }}>
-                      {box.label}
-                    </Text>
-                  </View>
-                 ))}
+                    {boundingBoxes.map((box, i) => {
+                      return (
+                        <View
+                          key={i}
+                          style={{
+                            position: 'absolute',
+                            left: box.x,
+                            top: box.y,
+                            width: box.width,
+                            height: box.height,
+                            borderWidth: 2,
+                            borderColor: 'red',
+                            borderRadius: 4,
+                            justifyContent: 'flex-start',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: 'red',
+                              backgroundColor: 'rgba(0,0,0,0.6)',
+                              fontSize: 12,
+                              paddingHorizontal: 4,
+                            }}
+                          >
+                            {box.label}
+                          </Text>
+                        </View>
+                      );
+                    })}
                     {isScanning && (
                       <View style={styles.scanningIndicator}>
                         <Text style={styles.scanningText}>AI Scanning Active</Text>
