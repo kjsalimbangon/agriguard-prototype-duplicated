@@ -319,10 +319,27 @@ export default function DetectScreen() {
         <>
           {capturedImage ? (
             <View style={styles.resultContainer}>
-              <Image 
-                source={{ uri: capturedImage }}
-                style={styles.capturedImage}
-              />
+                  <View 
+                    style={{ width: '100%', height: '50%' }}
+                    onLayout={(e) => {
+                      setPreviewWidth(e.nativeEvent.layout.width);
+                      setPreviewHeight(e.nativeEvent.layout.height);
+                    }}
+                  >
+                    <Image 
+                      source={{ uri: capturedImage }}
+                      style={styles.capturedImage}
+                    />
+                    {detectionResults?.boundingBoxes && (
+                      <BoundingBox
+                        boxes={detectionResults.boundingBoxes}
+                        imageWidth={224}
+                        imageHeight={224}
+                        previewWidth={previewWidth}
+                        previewHeight={previewHeight}
+                      />
+                    )}
+                  </View>
               
               {isAnalyzing ? (
                 <View style={styles.analyzingContainer}>
@@ -342,13 +359,28 @@ export default function DetectScreen() {
           ) : (
             <View style={styles.cameraContainer}>
               {Platform.OS !== 'web' ? (
-                <CameraView 
-                  style={styles.camera}
-                  facing={cameraType}
-                  ref={cameraRef}
-                >
+                  <CameraView 
+                    style={styles.camera}
+                    facing={cameraType}
+                    ref={cameraRef}
+                    onLayout={(e) => {
+                      setPreviewWidth(e.nativeEvent.layout.width);
+                      setPreviewHeight(e.nativeEvent.layout.height);
+                    }}
+                  >
+                    
                   <View style={styles.overlay}>
                     <View style={styles.targetFrame} />
+
+                    {isScanning && detectionResults?.boundingBoxes && (
+                      <BoundingBox
+                        boxes={detectionResults.boundingBoxes}
+                        imageWidth={224}         // model input
+                        imageHeight={224}
+                        previewWidth={previewWidth}
+                        previewHeight={previewHeight}
+                      />
+                    )}
                     {isScanning && (
                       <View style={styles.scanningIndicator}>
                         <Text style={styles.scanningText}>AI Scanning Active</Text>
