@@ -77,9 +77,9 @@ export default function DetectScreen() {
     playSound();
   }, [showPestDetectedModal, soundObject]);
 
-useEffect(() => {
-  setBoundingBoxes([]); 
-}, []);
+  useEffect(() => {
+    setBoundingBoxes([]); 
+  }, []);
 
   useEffect(() => {
     // Listen for continuous scanning detections
