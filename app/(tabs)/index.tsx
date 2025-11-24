@@ -18,7 +18,8 @@ export default function DashboardScreen() {
   useEffect(() => {
     const refreshInterval = setInterval(() => {
       refreshData();
-    }, 10000); // Refresh every 10 seconds
+    }, 9000); // Refresh every 9 seconds
+
     return () => clearInterval(refreshInterval);
   }, [refreshData]);
 
