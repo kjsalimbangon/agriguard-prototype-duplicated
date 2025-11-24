@@ -90,28 +90,21 @@ export default function DetectScreen() {
 
   useEffect(() => {
     // Listen for continuous scanning detections
-    const handleDetection = (result: DetectionResult) => {
-      if (result.detected) {
-        setNotificationData(result);
-        setShowNotification(true);
-        setPesticideImageUri(result.pesticideImageUri);
-      if (result.coco?.bbox) {
-        const [x, y, width, height] = result.coco.bbox;
-        // Scale to camera preview size if needed
-        // For now we assume same resolution; adjust if necessary
-        setBoundingBoxes([{
-          x,
-          y,
-          width,
-          height,
-          label: result.pestType,
-        }]);
-      } else {
-        setBoundingBoxes([]);
-        }
-      }
-    };
+  const handleDetection = (result: DetectionResult) => {
+    if (result.detected) {
+      setNotificationData(result);
+      setShowNotification(true);
+      setPesticideImageUri(result.pesticideImageUri);
+    }
 
+    // Forward bounding box into the service
+    if (result.coco?.bbox) {
+      pestDetectionService.sendBoundingBox({
+        rawBox: result.coco.bbox,
+        cocoClass: result.pestType,
+      });
+    }
+  };
     // This would be handled by the usePestDetection hook
     // The notification will show when continuous scanning detects a pest
   }, []);
