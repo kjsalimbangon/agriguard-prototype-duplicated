@@ -18,8 +18,18 @@ export default function DashboardScreen() {
   useEffect(() => {
     const refreshInterval = setInterval(() => {
       refreshData();
-    }, 5000); // Refresh every 5 seconds
-
+    }, 10000); // Refresh every 10 seconds
+    const sub = pestDetectionService.onBoundingBox((scaledBox) => {
+      setBoundingBoxes((prev) => [...prev, scaledBox]);
+  
+      // Auto-clear boxes each frame
+      setTimeout(() => {
+        setBoundingBoxes([]);
+      }, 500);
+    });
+  
+    return () => sub.remove();
+  }, []);
     return () => clearInterval(refreshInterval);
   }, [refreshData]);
 
