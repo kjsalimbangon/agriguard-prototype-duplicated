@@ -1,20 +1,4 @@
-import { useState, useEffect, useCallback, MutableRefObject } from 'react';
-import * as tf from '@tensorflow/tfjs';
-import * as tfRN from '@tensorflow/tfjs-react-native';
-import * as cocoSsd from '@tensorflow-models/coco-ssd';
-import * as ImageManipulator from 'expo-image-manipulator';
-import { Platform } from 'react-native';
-import { databaseManager, PestDetection, PestSpecies } from '@/database/DatabaseManager';
-import { pestDetectionService, DetectionResult } from '@/services/PestDetectionService';
-
-// Types: the cameraRef from your DetectScreen is a ref to CameraView - keep as any to avoid strict coupling
-type CameraRef = MutableRefObject<any | null>;
-
-export function usePestDetection(cameraRef?: CameraRef) {
-  const [isScanning, setIsScanning] = useState(false);
-  const [detectionHistory, setDetectionHistory] = useState<PestDetection[]>([]);
-  const [detectionResults, setDetectionResults] = useState<DetectionResult | null>(null);
-  const [pestDatabase, setPestDatabase] = useState<PestSpecies[]>([]);
+estSpecies[]>([]);
   const [stats, setStats] = useState({
     totalDetections: 0,
     todayDetections: 0,
