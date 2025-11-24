@@ -31,13 +31,14 @@ export default function DetectScreen() {
   const scanner = usePestScanner(cameraRef, pestData.handleDetection);
   const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null);
 
-  const {
-    isScanning,
-    startScanning,
-    stopScanning,
-    detectionResults,     // <-- replaces old detectionResults
-    boundingBoxes,        // <-- if your new scanner returns this
-    refreshData           // <-- if included in your new hook
+  const { 
+    isScanning, 
+    startScanning, 
+    stopScanning, 
+    analyzeImage, 
+    detectionHistory,
+    boundingBoxes,
+    refreshData 
   } = usePestScanner(cameraRef, pestData.handleDetection);
 
   useEffect(() => {
