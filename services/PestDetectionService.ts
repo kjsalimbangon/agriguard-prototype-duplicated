@@ -36,6 +36,7 @@ export interface DetectionResult {
 }
 
 class PestDetectionService {
+  private detectionModel: cocoSsd.ObjectDetection | null = null;
   private model: tf.LayersModel | null = null;
   private labels: string[] = [];
 
