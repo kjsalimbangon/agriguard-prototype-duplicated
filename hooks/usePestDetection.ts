@@ -13,6 +13,7 @@ type CameraRef = MutableRefObject<any | null>;
 export function usePestDetection(cameraRef?: CameraRef) {
   const [isScanning, setIsScanning] = useState(false);
   const [detectionHistory, setDetectionHistory] = useState<PestDetection[]>([]);
+  const [detectionResults, setDetectionResults] = useState<DetectionResult | null>(null);
   const [pestDatabase, setPestDatabase] = useState<PestSpecies[]>([]);
   const [stats, setStats] = useState({
     totalDetections: 0,
@@ -233,6 +234,7 @@ export function usePestDetection(cameraRef?: CameraRef) {
                 ]
               };
               handleDetection(enriched);
+              setDetectionResults(enriched);
             }
           } catch (cropErr) {
             console.warn('Failed to crop & analyze detection region:', cropErr);
@@ -286,6 +288,7 @@ export function usePestDetection(cameraRef?: CameraRef) {
     startScanning,
     stopScanning,
     analyzeImage,
-    refreshData
+    refreshData,
+    detectionResults
   };
 }
