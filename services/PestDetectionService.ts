@@ -183,9 +183,36 @@ class PestDetectionService {
       index: maxIndex,
     };
   }
+  
+  private async classifyCrop(cropTensor: tf.Tensor3D) {
+  const model = await this.loadModel();
 
+  const resized = tf.image
+    .resizeBilinear(cropTensor, [BITMAP_DIMENSION, BITMAP_DIMENSION])
+    .div(127.5).sub(1)
+    .expandDims(0);
+
+  const predictions = (model.predict(resized) as tf.Tensor).dataSync();
+  tf.dispose(resized);
+
+  const maxIndex = predictions.indexOf(Math.max(...predictions));
+  const pestLabel = this.labels[maxIndex] ?? "Unknown";
+  const confidence = Math.round(predictions[maxIndex] * 100);
+
+  return { pestLabel, confidence, predictions };
+}
+  
   // 🔍 Public API
   async analyzeImage(imageUri: string): Promise<DetectionResult> {
+    const detections = await this.detectObjects(imageUri);
+    let boundingBoxes = detections.map(d => ({
+      x: d.bbox[0],
+      y: d.bbox[1],
+      width: d.bbox[2],
+      height: d.bbox[3],
+      label: d.class,
+      confidence: d.score
+    }));
     const result = await this.aiDetection(imageUri);
 
     if (result.detected) {
@@ -200,7 +227,10 @@ class PestDetectionService {
       await databaseManager.addPestDetection(detection);
     }
 
-    return result;
+    return {
+      ...result,
+      boundingBoxes
+    };
   }
 
   async getDetectionHistory() {
