@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, RefObject } from 'react';
+import { Camera, CameraType } from 'expo-camera';
 import { pestDetectionService, DetectionResult } from '@/services/PestDetectionService';
 import { PestDetection, PestSpecies } from '@/database/DatabaseManager';
 
@@ -13,6 +14,16 @@ export function usePestDetection() {
     averageConfidence: 0
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+
+  // Request camera permissions on mount
+  useEffect(() => {
+    (async () => {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasPermission(status === 'granted');
+      console.log('Camera permission status:', status);
+    })();
+  }, []);
 
   const handleDetection = useCallback((result: DetectionResult) => {
     // This will be called when a pest is detected during continuous scanning
@@ -55,11 +66,22 @@ export function usePestDetection() {
     }
   }, []);
 
-  const startScanning = useCallback(() => {
+  // In usePestDetection.ts
+  const startScanning = useCallback((cameraRef: RefObject<any>) => {
+    console.log('startScanning called');
+    
+    if (!hasPermission) {
+      console.warn('Camera permission not granted');
+      return;
+    }
+  
     setIsScanning(true);
     pestDetectionService.addDetectionCallback(handleDetection);
-    pestDetectionService.startContinuousScanning();
-  }, [handleDetection]);
+    
+    // Pass the ref directly - service will handle web vs native
+    pestDetectionService.startContinuousScanning(cameraRef);
+    
+  }, [handleDetection, hasPermission]);
 
   const stopScanning = useCallback(() => {
     setIsScanning(false);
@@ -104,6 +126,7 @@ export function usePestDetection() {
     pestDatabase,
     stats,
     isLoading,
+    hasPermission,
     startScanning,
     stopScanning,
     analyzeImage,

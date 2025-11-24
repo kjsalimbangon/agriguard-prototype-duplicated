@@ -22,6 +22,7 @@ export interface DetectionResult {
 class PestDetectionService {
   private model: tf.LayersModel | null = null;
   private labels: string[] = [];
+  cameraRef: any;
 
   // 🧩 Load local TFJS model (Teachable Machine export)
   private async loadModel() {
@@ -36,10 +37,10 @@ class PestDetectionService {
           const META_URL =
             'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/metadata.json';
           this.model = await tf.loadLayersModel(MODEL_URL);
-            // Fetch metadata.json for labels
+          // Fetch metadata.json for labels
           const metaResponse = await fetch(META_URL);
           const metadata = await metaResponse.json();
-           this.labels = metadata.labels;
+          this.labels = metadata.labels;
         } else {
           const modelJson = require('../assets/model/model.json');
           const modelWeights = require('../assets/model/weights.bin');
@@ -68,21 +69,50 @@ class PestDetectionService {
 
       if (!processed.base64) throw new Error('Image conversion failed: no base64 data.');
 
-      // Convert base64 → Uint8Array
-      const rawImageData = tf.util.encodeString(processed.base64, 'base64').buffer;
-      const imageBytes = new Uint8Array(rawImageData);
+      let decodedImage: tf.Tensor3D;
 
-      // Decode → resize → normalize to [-1, 1]
-      const decodedImage = decodeJpeg(imageBytes, TENSORFLOW_CHANNEL)
+      if (Platform.OS === 'web') {
+        // 🌐 Web: Convert base64 to canvas, then to tensor
+        const image = new Image();
+        image.src = `data:image/jpeg;base64,${processed.base64}`;
+
+        await new Promise((resolve, reject) => {
+          image.onload = resolve;
+          image.onerror = reject;
+        });
+
+        // Draw to canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = BITMAP_DIMENSION;
+        canvas.height = BITMAP_DIMENSION;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Failed to get canvas context');
+        ctx.drawImage(image, 0, 0, BITMAP_DIMENSION, BITMAP_DIMENSION);
+
+        // Convert canvas to tensor
+        decodedImage = tf.browser.fromPixels(canvas, TENSORFLOW_CHANNEL)
+          .toFloat()
+          .div(127.5)
+          .sub(1) as tf.Tensor3D;
+      } else {
+        // 📱 Native: Decode base64 JPEG directly
+        const rawImageData = tf.util.encodeString(processed.base64, 'base64').buffer;
+        const imageBytes = new Uint8Array(rawImageData);
+
+        decodedImage = decodeJpeg(imageBytes, TENSORFLOW_CHANNEL)
+          .toFloat()
+          .div(127.5)
+          .sub(1) as tf.Tensor3D;
+      }
+
+      // Reshape to 4D tensor [batch, height, width, channels]
+      const tensor4D = decodedImage
         .resizeBilinear([BITMAP_DIMENSION, BITMAP_DIMENSION])
-        .toFloat()
-        .div(127.5)
-        .sub(1)
         .reshape([1, BITMAP_DIMENSION, BITMAP_DIMENSION, TENSORFLOW_CHANNEL]);
 
-      return decodedImage as tf.Tensor4D;
+      return tensor4D as tf.Tensor4D;
     } catch (err) {
-      console.error('❌ Failed to convert URI to tensor:', err);
+      console.error('Failed to convert URI to tensor:', err);
       throw err;
     }
   }
@@ -170,10 +200,12 @@ class PestDetectionService {
   async getDetectionStats() {
     return await databaseManager.getDetectionStats();
   }
-    // 📡 Continuous Scanning Support
+
+  // 📡 Continuous Scanning Support
   private detectionCallbacks: ((result: DetectionResult) => void)[] = [];
   private scanningInterval: NodeJS.Timer | null = null;
   private isScanning: boolean = false;
+  private currentScanImageUri: string | null = null;
 
   // ➕ Register callback
   addDetectionCallback(callback: (result: DetectionResult) => void) {
@@ -187,41 +219,123 @@ class PestDetectionService {
     this.detectionCallbacks = this.detectionCallbacks.filter(cb => cb !== callback);
   }
 
-  // ▶️ Start continuous scanning (requires you providing the camera frame URI)
-  startContinuousScanning() {
+  // 📸 Set the image URI for continuous scanning
+  setScanImageUri(uri: string) {
+    this.currentScanImageUri = uri;
+  }
+
+  // ▶️ Start continuous scanning with a specific image
+  // In PestDetectionService.ts
+  // ▶️ Start continuous scanning
+  startContinuousScanning(cameraRef?: any) {
     if (this.isScanning) return;
+
+    if (cameraRef) {
+      this.cameraRef = cameraRef;
+    }
+
     this.isScanning = true;
+    console.log("Continuous scanning started");
+    console.log("Platform:", Platform.OS);
 
-    console.log("🔄 Continuous scanning started");
+    if (Platform.OS === 'web') {
+      console.log("Starting web-based scanning");
+      this.startWebScanning();
+    } else {
+      console.log("Starting native camera scanning");
+      this.startNativeScanning();
+    }
+  }
 
+  // 🌐 Web scanning using video element
+  private startWebScanning() {
     this.scanningInterval = setInterval(async () => {
       try {
-        // ⚠️ Replace with your live camera URI
-        const imageUri = globalThis.latestCameraFrameUri;
+        // Get the video element from CameraView on web
+        const videoElement = document.querySelector('video') as HTMLVideoElement;
+        
+        if (!videoElement) {
+          console.warn("⚠️ No video element found on page");
+          return;
+        }
 
-        if (!imageUri) return;
+        console.log("Have a video element, getting frame...");
 
-        const detection = await this.analyzeImage(imageUri);
-
-        // Notify all callbacks
+        // Create canvas to capture video frame
+        const canvas = document.createElement('canvas');
+        canvas.width = BITMAP_DIMENSION;
+        canvas.height = BITMAP_DIMENSION;
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          console.warn("Could not get canvas context");
+          return;
+        }
+        
+        // Draw current video frame to canvas
+        ctx.drawImage(videoElement, 0, 0, BITMAP_DIMENSION, BITMAP_DIMENSION);
+        
+        // Convert to data URL
+        const imageUri = canvas.toDataURL('image/jpeg', 0.7);
+        
+        console.log("Got frames, gonna do some image things");
+        const detection = await this.aiDetection(imageUri);
+        
+        // Notify callbacks
         this.detectionCallbacks.forEach(cb => cb(detection));
+        
       } catch (err) {
-        console.error("Continuous scan error:", err);
+        console.error("Web scan error:", err);
       }
     }, 3000); // scan every 3 seconds
   }
 
+  // 📱 Native scanning using camera ref
+  private startNativeScanning() {
+    if (!this.cameraRef) {
+      console.warn("No camera reference for native scanning");
+      return;
+    }
+
+    this.scanningInterval = setInterval(async () => {
+      try {
+        if (!this.cameraRef.current) {
+          console.warn("Camera ref became null during scanning");
+          return;
+        }
+
+        const photo = await this.cameraRef.current.takePictureAsync({
+          quality: 0.5,
+          skipProcessing: true,
+        });
+
+        if (!photo?.uri) {
+          console.warn("⚠️ No photo URI returned");
+          return;
+        }
+
+        const detection = await this.aiDetection(photo.uri);
+        this.detectionCallbacks.forEach(cb => cb(detection));
+        
+      } catch (err) {
+        console.error("Native scan error:", err);
+      }
+    }, 3000);
+  }
+  
   // ⏹ Stop continuous scanning
   stopContinuousScanning() {
     if (!this.isScanning) return;
     this.isScanning = false;
 
-    console.log("🛑 Continuous scanning stopped");
-
+    console.log('Scanning stopped because...');
+  
     if (this.scanningInterval) {
       clearInterval(this.scanningInterval);
       this.scanningInterval = null;
     }
+    
+    this.cameraRef = null; // Clear camera ref
   }
 }
 

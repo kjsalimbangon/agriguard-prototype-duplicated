@@ -12,6 +12,7 @@ import { DetectionResult } from '@/services/PestDetectionService';
 import { BoundingBox } from '@/components/BoundingBox';
 import { router } from 'expo-router';
 
+
 export default function DetectScreen() {
   const [hasPermission, requestPermission] = useCameraPermissions();
   const [cameraType, setCameraType] = useState<CameraType>('back');
@@ -28,6 +29,10 @@ export default function DetectScreen() {
   const [modalDetectionResult, setModalDetectionResult] = useState<DetectionResult | null>(null);
   const cameraRef = useRef(null);
   const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null);
+
+  // These do something.
+  const webVideoRef = useRef<HTMLVideoElement>(null);
+  const [webStream, setWebStream] = useState<MediaStream | null>(null);
 
   const { 
     isScanning, 
@@ -88,10 +93,38 @@ export default function DetectScreen() {
 
       }
     };
-
     // This would be handled by the usePestDetection hook
     // The notification will show when continuous scanning detects a pest
   }, []);
+  useEffect(() => {
+    if (Platform.OS === 'web' && !capturedImage) {
+      const startWebCamera = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: cameraType === 'back' ? 'environment' : 'user' }
+          });
+          setWebStream(stream);
+          
+          if (webVideoRef.current) {
+            webVideoRef.current.srcObject = stream;
+            await webVideoRef.current.play();
+          }
+        } catch (err) {
+          console.error('Failed to start web camera:', err);
+        }
+      };
+      
+      startWebCamera();
+      
+      // Cleanup: stop camera when component unmounts
+      return () => {
+        if (webStream) {
+          webStream.getTracks().forEach(track => track.stop());
+        }
+      };
+    }
+  }, [cameraType, capturedImage]);
+
 
   const handleCapture = async () => {
     setIsCapturing(true);
@@ -361,23 +394,21 @@ export default function DetectScreen() {
           ) : (
             <View style={styles.cameraContainer}>
               {Platform.OS !== 'web' ? (
-                  <CameraView 
-                    style={styles.camera}
-                    facing={cameraType}
-                    ref={cameraRef}
-                    onLayout={(e) => {
-                      setPreviewWidth(e.nativeEvent.layout.width);
-                      setPreviewHeight(e.nativeEvent.layout.height);
-                    }}
-                  >
-                    
+                <CameraView 
+                  style={styles.camera}
+                  facing={cameraType}
+                  ref={cameraRef}
+                  onLayout={(e) => {
+                    setPreviewWidth(e.nativeEvent.layout.width);
+                    setPreviewHeight(e.nativeEvent.layout.height);
+                  }}
+                >
                   <View style={styles.overlay}>
                     <View style={styles.targetFrame} />
-
                     {isScanning && detectionResults?.boundingBoxes && (
                       <BoundingBox
                         boxes={detectionResults.boundingBoxes}
-                        imageWidth={224}         // model input
+                        imageWidth={224}
                         imageHeight={224}
                         previewWidth={previewWidth}
                         previewHeight={previewHeight}
@@ -391,15 +422,26 @@ export default function DetectScreen() {
                   </View>
                 </CameraView>
               ) : (
-                <View style={styles.webFallback}>
-                  <Camera size={48} color="#8BA840" />
-                  <Text style={styles.webFallbackText}>
-                    Camera preview not available on web.
-                    Tap the button below to simulate AI pest detection.
-                  </Text>
-                  {isScanning && (
-                    <Text style={styles.scanningText}>AI Scanning Active</Text>
-                  )}
+                <View style={styles.camera}>
+                  <video
+                    ref={webVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover'
+                    }}
+                  />
+                  <View style={styles.overlay}>
+                    <View style={styles.targetFrame} />
+                    {isScanning && (
+                      <View style={styles.scanningIndicator}>
+                        <Text style={styles.scanningText}>AI Scanning Active</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
               )}
               
@@ -423,7 +465,7 @@ export default function DetectScreen() {
                 
                 <TouchableOpacity 
                   style={styles.scanToggleButton}
-                  onPress={isScanning ? stopScanning : startScanning}
+                  onPress={isScanning ? stopScanning : () => startScanning(cameraRef)}
                 >
                   {isScanning ? (
                     <Square size={24} color="#FF6B6B" />
