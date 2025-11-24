@@ -27,8 +27,8 @@ export default function DetectScreen() {
   const [activeTab, setActiveTab] = useState<'camera' | 'history'>('camera');
   const [showPestDetectedModal, setShowPestDetectedModal] = useState(false);
   const [modalDetectionResult, setModalDetectionResult] = useState<DetectionResult | null>(null);
-  const [cameraRef] = useRef(null);
-  const [scanner] = usePestScanner(cameraRef, handleDetection);
+  const cameraRef = useRef(null);
+  const scanner = usePestScanner(cameraRef, handleDetection);
   const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null);
 
   const { 
