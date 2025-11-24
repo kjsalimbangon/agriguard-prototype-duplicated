@@ -221,10 +221,16 @@ export function usePestDetection(cameraRef?: CameraRef) {
                 // you can add raw bbox or coco class for later use if you like
                 // @ts-ignore - optional enrichment
                 coco: { class: cocoClass, score: det.score, bbox: det.bbox },
-              };
-              // SCALE bounding box to match preview size
-                  
-              // Call the existing handler (saves to DB via analyzeImage & then we also call handleDetection)
+                boundingBoxes: [
+                  {
+                    x: det.bbox[0],
+                    y: det.bbox[1],
+                    width: det.bbox[2],
+                    height: det.bbox[3],
+                    label: tmResult.pestType ?? cocoClass,
+                    confidence: det.score,
+                  }
+                ]
               handleDetection(enriched);
             }
           } catch (cropErr) {
