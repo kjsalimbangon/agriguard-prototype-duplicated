@@ -170,6 +170,60 @@ class PestDetectionService {
   async getDetectionStats() {
     return await databaseManager.getDetectionStats();
   }
+    // 📡 Continuous Scanning Support
+  private detectionCallbacks: ((result: DetectionResult) => void)[] = [];
+  private scanningInterval: NodeJS.Timer | null = null;
+  private isScanning: boolean = false;
+
+  // ➕ Register callback
+  addDetectionCallback(callback: (result: DetectionResult) => void) {
+    if (!this.detectionCallbacks.includes(callback)) {
+      this.detectionCallbacks.push(callback);
+    }
+  }
+
+  // ➖ Remove callback
+  removeDetectionCallback(callback: (result: DetectionResult) => void) {
+    this.detectionCallbacks = this.detectionCallbacks.filter(cb => cb !== callback);
+  }
+
+  // ▶️ Start continuous scanning (requires you providing the camera frame URI)
+  startContinuousScanning() {
+    if (this.isScanning) return;
+    this.isScanning = true;
+
+    console.log("🔄 Continuous scanning started");
+
+    this.scanningInterval = setInterval(async () => {
+      try {
+        // ⚠️ Replace with your live camera URI
+        const imageUri = globalThis.latestCameraFrameUri;
+
+        if (!imageUri) return;
+
+        const detection = await this.analyzeImage(imageUri);
+
+        // Notify all callbacks
+        this.detectionCallbacks.forEach(cb => cb(detection));
+      } catch (err) {
+        console.error("Continuous scan error:", err);
+      }
+    }, 3000); // scan every 3 seconds
+  }
+
+  // ⏹ Stop continuous scanning
+  stopContinuousScanning() {
+    if (!this.isScanning) return;
+    this.isScanning = false;
+
+    console.log("🛑 Continuous scanning stopped");
+
+    if (this.scanningInterval) {
+      clearInterval(this.scanningInterval);
+      this.scanningInterval = null;
+    }
+  }
+
 }
 
 export const pestDetectionService = new PestDetectionService();
