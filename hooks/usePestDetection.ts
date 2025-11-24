@@ -223,7 +223,8 @@ export function usePestDetection(cameraRef?: CameraRef) {
                 // @ts-ignore - optional enrichment
                 coco: { class: cocoClass, score: det.score, bbox: det.bbox },
               };
-
+              // SCALE bounding box to match preview size
+                  
               // Call the existing handler (saves to DB via analyzeImage & then we also call handleDetection)
               handleDetection(enriched);
             }
