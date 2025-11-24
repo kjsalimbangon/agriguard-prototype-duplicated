@@ -17,9 +17,22 @@ export interface DetectionResult {
   species?: PestSpecies;
   rawScores?: number[];
   index?: number;
-  boundingBoxes: [{x: boxX,y: boxY, width: boxWidth, height: boxHeight, label: pestType, confidence,
-    },
-  ];
+ boundingBox?: {
+    x: number;      // Left
+    y: number;      // Top
+    width: number; 
+    height: number;
+  };
+
+  // If multiple detections later:
+  boundingBoxes?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    label?: string;
+    confidence?: number;
+  }[];
 }
 
 class PestDetectionService {
