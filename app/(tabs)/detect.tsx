@@ -10,7 +10,7 @@ import { PestDetectedModal } from '@/components/PestDetectedModal';
 import { usePestDetection } from '@/hooks/usePestDetection';
 import { DetectionResult } from '@/services/PestDetectionService';
 import { BoundingBox } from '@/components/BoundingBox';
-import { router } from 'expo-router'
+import { router } from 'expo-router';
 
 export default function DetectScreen() {
   const [hasPermission, requestPermission] = useCameraPermissions();
