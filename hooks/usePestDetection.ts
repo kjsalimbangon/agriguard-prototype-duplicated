@@ -46,35 +46,32 @@ export function usePestDetection(cameraRef?: CameraRef) {
   );
 
   // Helper: refreshers
-  const loadDetectionHistory = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const history = await pestDetectionService.getDetectionHistory();
-      setDetectionHistory(history);
-    } catch (error) {
-      console.error('Failed to load detection history:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+const loadDetectionHistory = useCallback(async () => {
+  try {
+    const history = await pestDetectionService.getDetectionHistory();
+    setDetectionHistory(history);
+  } catch (error) {
+    console.error("Failed to load detection history:", error);
+  }
+}, []);
 
-  const loadPestDatabase = useCallback(async () => {
-    try {
-      const database = await pestDetectionService.getPestDatabase();
-      setPestDatabase(database);
-    } catch (error) {
-      console.error('Failed to load pest database:', error);
-    }
-  }, []);
+const loadPestDatabase = useCallback(async () => {
+  try {
+    const database = await pestDetectionService.getPestDatabase();
+    setPestDatabase(database);
+  } catch (error) {
+    console.error("Failed to load pest database:", error);
+  }
+}, []);
 
-  const loadStats = useCallback(async () => {
-    try {
-      const detectionStats = await pestDetectionService.getDetectionStats();
-      setStats(detectionStats);
-    } catch (error) {
-      console.error('Failed to load stats:', error);
-    }
-  }, []);
+const loadStats = useCallback(async () => {
+  try {
+    const data = await pestDetectionService.getDetectionStats();
+    setStats(data);
+  } catch (error) {
+    console.error("Failed to load stats:", error);
+  }
+}, []);
 
   const refreshData = useCallback(async () => {
     await Promise.all([loadDetectionHistory(), loadPestDatabase(), loadStats()]);
