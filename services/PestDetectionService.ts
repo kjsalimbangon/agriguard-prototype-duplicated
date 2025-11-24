@@ -1,6 +1,5 @@
 import { databaseManager, PestDetection, PestSpecies } from '@/database/DatabaseManager';
 import * as tf from '@tensorflow/tfjs';
-import * as cocoSsd from '@tensorflow-models/coco-ssd';
 import '@tensorflow/tfjs-react-native';
 import { bundleResourceIO, decodeJpeg } from '@tensorflow/tfjs-react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -18,38 +17,12 @@ export interface DetectionResult {
   species?: PestSpecies;
   rawScores?: number[];
   index?: number;
- boundingBox?: {
-    x: number;      // Left
-    y: number;      // Top
-    width: number; 
-    height: number;
-  };
-
-  // If multiple detections later:
-  boundingBoxes?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    label?: string;
-    confidence?: number;
-  }[];
 }
 
 class PestDetectionService {
-  private detectionModel: cocoSsd.ObjectDetection | null = null;
   private model: tf.LayersModel | null = null;
   private labels: string[] = [];
 
-  private async loadCocoModel() {
-    if (!this.detectionModel) {
-      await tf.ready();
-      this.detectionModel = await cocoSsd.load();
-      console.log("🐞 COCO-SSD model loaded");
-    }
-    return this.detectionModel;
-  }
-  
   // 🧩 Load local TFJS model (Teachable Machine export)
   private async loadModel() {
     if (!this.model) {
@@ -113,23 +86,6 @@ class PestDetectionService {
       throw err;
     }
   }
-  private async detectObjects(imageUri: string) {
-  const coco = await this.loadCocoModel();
-  
-  const response = await fetch(imageUri);
-  const buffer = await response.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-
-  const tfImage = decodeJpeg(bytes);
-
-  const detections = await coco.detect(tfImage);
-  tf.dispose(tfImage);
-
-  // Only return insect-like classes (adjust if needed)
-  return detections.filter(d =>
-    ["insect", "bee", "butterfly", "spider"].includes(d.class)
-  );
-}
 
   // 🧠 Run AI-based detection
   private async aiDetection(imageUri: string): Promise<DetectionResult> {
@@ -183,36 +139,9 @@ class PestDetectionService {
       index: maxIndex,
     };
   }
-  
-  private async classifyCrop(cropTensor: tf.Tensor3D) {
-  const model = await this.loadModel();
 
-  const resized = tf.image
-    .resizeBilinear(cropTensor, [BITMAP_DIMENSION, BITMAP_DIMENSION])
-    .div(127.5).sub(1)
-    .expandDims(0);
-
-  const predictions = (model.predict(resized) as tf.Tensor).dataSync();
-  tf.dispose(resized);
-
-  const maxIndex = predictions.indexOf(Math.max(...predictions));
-  const pestLabel = this.labels[maxIndex] ?? "Unknown";
-  const confidence = Math.round(predictions[maxIndex] * 100);
-
-  return { pestLabel, confidence, predictions };
-}
-  
   // 🔍 Public API
   async analyzeImage(imageUri: string): Promise<DetectionResult> {
-    const detections = await this.detectObjects(imageUri);
-    let boundingBoxes = detections.map(d => ({
-      x: d.bbox[0],
-      y: d.bbox[1],
-      width: d.bbox[2],
-      height: d.bbox[3],
-      label: d.class,
-      confidence: d.score
-    }));
     const result = await this.aiDetection(imageUri);
 
     if (result.detected) {
@@ -227,10 +156,7 @@ class PestDetectionService {
       await databaseManager.addPestDetection(detection);
     }
 
-    return {
-      ...result,
-      boundingBoxes
-    };
+    return result;
   }
 
   async getDetectionHistory() {
