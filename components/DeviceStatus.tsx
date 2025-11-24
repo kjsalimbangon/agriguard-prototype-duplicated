@@ -14,13 +14,9 @@ export function DeviceStatus() {
   };
 
   const getWaterIcon = () => {
-    if (deviceStatus?.waterLevel === 100 || deviceStatus?.waterLevel === 0) {
-      return <Droplets size={16} color="#999" />;
-  }
-
-    const level = deviceStatus.waterLevel;
-    const color = level > 100 ? '#2196F3' : level > 0 ? '#F2C94C' : '#FF6B6B';
-    return <Droplets size={16} color={color} />;
+if (deviceStatus.waterLevel === 100) return <Droplets size={16} color="#2196F3" />;
+if (deviceStatus.waterLevel === 0) return <Droplets size={16} color="#FF6B6B" />;
+return <Droplets size={16} color="#999" />;
 
   };
 
