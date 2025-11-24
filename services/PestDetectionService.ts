@@ -4,6 +4,8 @@ import '@tensorflow/tfjs-react-native';
 import { bundleResourceIO, decodeJpeg } from '@tensorflow/tfjs-react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Platform } from 'react-native';
+import * as tfRN from '@tensorflow/tfjs-react-native';
+import * as cocoSsd from '@tensorflow-models/coco-ssd';
 
 // Tensor config
 const BITMAP_DIMENSION = 224;
@@ -11,17 +13,48 @@ const TENSORFLOW_CHANNEL = 3;
 
 export interface DetectionResult {
   detected: boolean;
-  pestType: string;
-  confidence: number;
-  recommendations: string[];
+  pestType?: string;
+  confidence?: number;
+  recommendations?: string[];
   species?: PestSpecies;
   rawScores?: number[];
   index?: number;
+
+  boundingBoxes?: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    confidence: number;
+    class: string;
+  }>;
+  imageWidth?: number;
+  imageHeight?: number;
+  uri?: string;
 }
 
 class PestDetectionService {
   private model: tf.LayersModel | null = null;
   private labels: string[] = [];
+  private cocoModel: any = null;
+  private isProcessing: boolean = false;
+
+
+
+  // HERE FOR COCO TO DETECT WHAT IT NEEDS                        HEEEEEEEEEEEEEEEEERRRRRREEEEEEEEEEEE!!!!!!
+  
+  
+  
+  private allowedCocoClasses = new Set([
+    "bird", "mouse", "cat", "dog",
+    "bottle", "cup", "bowl", "vase", "chair", "laptop",
+    "person", "cell phone", "book", "clock", "scissors"
+  ]);
+
+
+
+
+  private MIN_CONFIDENCE = 0.4;
   cameraRef: any;
 
   // 🧩 Load local TFJS model (Teachable Machine export)
@@ -248,14 +281,22 @@ class PestDetectionService {
   }
 
   // 🌐 Web scanning using video element
-  private startWebScanning() {
+  private async startWebScanning() {
+    // Ensure COCO model is loaded
+    if (!this.cocoModel) {
+      await this.initializeCocoModel();
+    }
+
     this.scanningInterval = setInterval(async () => {
+      if (this.isProcessing) return;
+      this.isProcessing = true;
+
       try {
-        // Get the video element from CameraView on web
         const videoElement = document.querySelector('video') as HTMLVideoElement;
         
         if (!videoElement) {
-          console.warn("⚠️ No video element found on page");
+          console.warn("No video element found on page");
+          this.isProcessing = false;
           return;
         }
 
@@ -263,72 +304,225 @@ class PestDetectionService {
 
         // Create canvas to capture video frame
         const canvas = document.createElement('canvas');
-        canvas.width = BITMAP_DIMENSION;
-        canvas.height = BITMAP_DIMENSION;
+        canvas.width = videoElement.videoWidth || BITMAP_DIMENSION;
+        canvas.height = videoElement.videoHeight || BITMAP_DIMENSION;
         const ctx = canvas.getContext('2d');
         
         if (!ctx) {
           console.warn("Could not get canvas context");
+          this.isProcessing = false;
           return;
         }
         
         // Draw current video frame to canvas
-        ctx.drawImage(videoElement, 0, 0, BITMAP_DIMENSION, BITMAP_DIMENSION);
+        ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
         
-        // Convert to data URL
-        const imageUri = canvas.toDataURL('image/jpeg', 0.7);
+        // Get image data for TensorFlow
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         
-        console.log("Got frames, gonna do some image things");
-        const detection = await this.aiDetection(imageUri);
+        // Detect objects using COCO-SSD
+        const detections = await this.detectObjectsFromImageData(imageData);
         
-        // Notify callbacks
-        this.detectionCallbacks.forEach(cb => cb(detection));
+        console.log(`Found ${detections.length} detections`);
+        
+        // Create proper DetectionResult object
+        const result: DetectionResult = {
+          detected: detections.length > 0,
+          pestType: detections.length > 0 ? detections[0].class : undefined,
+          confidence: detections.length > 0 ? Math.round(detections[0].score * 100) : undefined,
+          boundingBoxes: detections.map(det => ({
+            x: det.bbox[0],
+            y: det.bbox[1],
+            width: det.bbox[2],
+            height: det.bbox[3],
+            confidence: det.score,
+            class: det.class
+          })),
+          imageWidth: canvas.width,
+          imageHeight: canvas.height,
+          recommendations: []
+        };
+        
+        console.log("Calling callbacks with result:", result);
+        
+        // Notify callbacks with detections
+        this.detectionCallbacks.forEach(cb => {
+          try {
+            cb(result);
+          } catch (err) {
+            console.error("Error in detection callback:", err);
+          }
+        });
         
       } catch (err) {
         console.error("Web scan error:", err);
+      } finally {
+        this.isProcessing = false;
       }
-    }, 3000); // scan every 3 seconds
+    }, 3000);
   }
 
   // 📱 Native scanning using camera ref
-  private startNativeScanning() {
+  private async startNativeScanning() {
     if (!this.cameraRef) {
       console.warn("No camera reference for native scanning");
       return;
     }
 
+    // Ensure COCO model is loaded
+    if (!this.cocoModel) {
+      console.log("Loading COCO model for native...");
+      await this.initializeCocoModel();
+    }
+
     this.scanningInterval = setInterval(async () => {
+      if (this.isProcessing) return;
+      this.isProcessing = true;
+
+      let tensor: tf.Tensor3D | null = null;
+
       try {
         if (!this.cameraRef.current) {
           console.warn("Camera ref became null during scanning");
+          this.isProcessing = false;
           return;
         }
 
         const photo = await this.cameraRef.current.takePictureAsync({
           quality: 0.5,
           skipProcessing: true,
+          base64: true,
         });
 
-        if (!photo?.uri) {
-          console.warn("⚠️ No photo URI returned");
+        if (!photo?.uri || !photo.base64) {
+          console.warn("No photo URI or base64 returned");
+          this.isProcessing = false;
           return;
         }
 
-        const detection = await this.aiDetection(photo.uri);
-        this.detectionCallbacks.forEach(cb => cb(detection));
+        // Convert to tensor and detect
+        const raw = tfRN.base64ToUint8Array(photo.base64);
+        tensor = tfRN.decodeJpeg(raw);
+        
+        const detections = await this.cocoModel.detect(tensor);
+        
+        console.log(`Found ${detections.length} detections`);
+        
+        // Filter for relevant classes
+        const relevantDetections = detections.filter((det: any) => 
+          this.allowedCocoClasses.has(det.class) && 
+          det.score >= this.MIN_CONFIDENCE
+        );
+
+        // Create proper DetectionResult object
+        const result: DetectionResult = {
+          detected: relevantDetections.length > 0,
+          pestType: relevantDetections.length > 0 ? relevantDetections[0].class : undefined,
+          confidence: relevantDetections.length > 0 ? Math.round(relevantDetections[0].score * 100) : undefined,
+          boundingBoxes: relevantDetections.map((det: any) => ({
+            x: det.bbox[0],
+            y: det.bbox[1],
+            width: det.bbox[2],
+            height: det.bbox[3],
+            confidence: det.score,
+            class: det.class
+          })),
+          imageWidth: photo.width,
+          imageHeight: photo.height,
+          uri: photo.uri,
+          recommendations: []
+        };
+
+        console.log("Calling callbacks with result:", result);
+
+        // Notify callbacks with detections
+        this.detectionCallbacks.forEach(cb => {
+          try {
+            cb(result);
+          } catch (err) {
+            console.error("Error in detection callback:", err);
+          }
+        });
         
       } catch (err) {
         console.error("Native scan error:", err);
+      } finally {
+        if (tensor) tf.dispose(tensor);
+        this.isProcessing = false;
       }
     }, 3000);
+  }
+
+  // Helper method to detect objects from ImageData (for web)
+  private async detectObjectsFromImageData(imageData: ImageData) {
+    if (!this.cocoModel) {
+      throw new Error("COCO model not loaded");
+    }
+
+    // Convert ImageData to tensor
+    const tensor = tf.browser.fromPixels(imageData);
+    
+    try {
+      const detections = await this.cocoModel.detect(tensor as any);
+      
+      // Filter for relevant classes
+      return detections.filter(det => 
+        this.allowedCocoClasses.has(det.class) && 
+        det.score >= this.MIN_CONFIDENCE
+      );
+    } finally {
+      tensor.dispose();
+    }
+  }
+
+  // Initialize COCO model if not already loaded
+  // Initialize COCO model if not already loaded
+  private async initializeCocoModel() {
+    if (this.cocoModel) return;
+
+    try {
+      if (Platform.OS === 'web') {
+        // Web: Use @tensorflow/tfjs and @tensorflow-models/coco-ssd
+        console.log("Loading COCO model for web...");
+        
+        // Ensure TensorFlow.js is ready for web
+        await tf.ready();
+        
+        // Dynamically import for web to avoid bundling issues
+        const cocoSsdModule = await import('@tensorflow-models/coco-ssd');
+        this.cocoModel = await cocoSsdModule.load({
+          base: 'lite_mobilenet_v2' // Use lite model for faster loading
+        });
+        
+        console.log("COCO model loaded successfully for web");
+      } else {
+        // Native: Use TensorFlow.js React Native
+        console.log("Loading COCO model for native...");
+        
+        await tfRN.ready();
+        await tf.setBackend("rn-webgl").catch(() => {
+          console.warn("WebGL backend not available, using default");
+        });
+        
+        this.cocoModel = await cocoSsd.load({
+          base: 'lite_mobilenet_v2'
+        });
+        
+        console.log("COCO model loaded successfully for native");
+      }
+    } catch (err) {
+      console.error("Failed to load COCO model:", err);
+      throw err;
+    }
   }
   
   // ⏹ Stop continuous scanning
   stopContinuousScanning() {
     if (!this.isScanning) return;
     this.isScanning = false;
+    this.isProcessing = false;
 
-    console.log('Scanning stopped because...');
+    console.log('Scanning stopped');
   
     if (this.scanningInterval) {
       clearInterval(this.scanningInterval);

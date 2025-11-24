@@ -7,12 +7,10 @@ import { DetectionResults } from '@/components/DetectionResults';
 import { PestNotification } from '@/components/PestNotification';
 import { DetectionHistory } from '@/components/DetectionHistory';
 import { PestDetectedModal } from '@/components/PestDetectedModal';
-import { usePestScanner } from '@/hooks/usePestScanner';
 import { usePestDetection } from '@/hooks/usePestDetection';
-import { DetectionResult } from '@/services/PestDetectionService';
+import { pestDetectionService, DetectionResult } from '@/services/PestDetectionService';
 import { BoundingBox } from '@/components/BoundingBox';
 import { router } from 'expo-router';
-
 
 export default function DetectScreen() {
   const [hasPermission, requestPermission] = useCameraPermissions();
@@ -32,7 +30,6 @@ export default function DetectScreen() {
   const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null);
   const [liveDetections, setLiveDetections] = useState<DetectionResult | null>(null);
 
-  // These do something.
   const webVideoRef = useRef<HTMLVideoElement>(null);
   const [webStream, setWebStream] = useState<MediaStream | null>(null);
 
@@ -43,7 +40,35 @@ export default function DetectScreen() {
     analyzeImage, 
     detectionHistory,
     refreshData 
-  } = usePestDetection(cameraRef);
+  } = usePestDetection();
+  
+  // Fixed detection callback - properly using pestDetectionService
+  useEffect(() => {
+    const handleDetection = (result: DetectionResult) => {
+      console.log('Live detection received:', result);
+      
+      if (result.boundingBoxes && result.boundingBoxes.length > 0) {
+        console.log('Setting live detections with', result.boundingBoxes.length, 'boxes');
+        setLiveDetections(result);
+        
+        // Show notification if pest detected during scanning
+        if (result.detected) {
+          setNotificationData(result);
+          setShowNotification(true);
+        }
+      } else {
+        // Clear detections if none found
+        setLiveDetections(null);
+      }
+    };
+
+    // Register callback with the service
+    pestDetectionService.addDetectionCallback(handleDetection);
+
+    return () => {
+      pestDetectionService.removeDetectionCallback(handleDetection);
+    };
+  }, []);
 
   useEffect(() => {
     requestPermission();
@@ -62,7 +87,6 @@ export default function DetectScreen() {
     
     loadSound();
     
-    // Cleanup function
     return () => {
       if (soundObject) {
         soundObject.unloadAsync();
@@ -70,7 +94,6 @@ export default function DetectScreen() {
     };
   }, []);
 
-  // Play sound when modal is shown
   useEffect(() => {
     const playSound = async () => {
       if (showPestDetectedModal && soundObject) {
@@ -85,19 +108,6 @@ export default function DetectScreen() {
     playSound();
   }, [showPestDetectedModal, soundObject]);
 
-  useEffect(() => {
-    // Listen for continuous scanning detections
-    const handleDetection = (result: DetectionResult) => {
-      if (result.detected) {
-        setNotificationData(result);
-        setShowNotification(true);
-        setPesticideImageUri(result.pesticideImageUri);
-
-      }
-    };
-    // This would be handled by the usePestDetection hook
-    // The notification will show when continuous scanning detects a pest
-  }, []);
   useEffect(() => {
     if (Platform.OS === 'web' && !capturedImage) {
       const startWebCamera = async () => {
@@ -118,7 +128,6 @@ export default function DetectScreen() {
       
       startWebCamera();
       
-      // Cleanup: stop camera when component unmounts
       return () => {
         if (webStream) {
           webStream.getTracks().forEach(track => track.stop());
@@ -127,13 +136,11 @@ export default function DetectScreen() {
     }
   }, [cameraType, capturedImage]);
 
-
   const handleCapture = async () => {
     setIsCapturing(true);
   
     try {
       if (Platform.OS !== 'web') {
-        // Native: actual camera capture
         if (!cameraRef.current) {
           setIsCapturing(false);
           return;
@@ -155,10 +162,8 @@ export default function DetectScreen() {
           setIsAnalyzing(false);
   
           if (result.detected) {
-            // Show modal for detected pest
             setModalDetectionResult(result);
             setShowPestDetectedModal(true);
-            // Update the displayed image to show the actual pest
             if (result.species?.imageUri) {
               setCapturedImage(result.species.imageUri);
             }
@@ -170,8 +175,7 @@ export default function DetectScreen() {
           setIsAnalyzing(false);
         }
       } else {
-        // Web: immediate mock simulation (no delay, no cameraRef check)
-        // Use a generic captured image placeholder for web
+        // Web fallback
         const capturedImageUri = 'https://images.pexels.com/photos/7828011/pexels-photo-7828011.jpeg';
         setCapturedImage(capturedImageUri);
         setIsCapturing(false);
@@ -182,10 +186,8 @@ export default function DetectScreen() {
           setIsAnalyzing(false);
   
           if (result.detected) {
-            // Show modal for detected pest
             setModalDetectionResult(result);
             setShowPestDetectedModal(true);
-            // Update the displayed image to show the actual pest
             if (result.species?.imageUri) {
               setCapturedImage(result.species.imageUri);
             }
@@ -200,34 +202,6 @@ export default function DetectScreen() {
     } catch (error) {
       console.error('Failed to take picture:', error);
       setIsCapturing(false);
-  
-      // Fallback only makes sense on native if camera fails
-      // On web, we already handled it above, so this fallback is primarily for native
-      if (Platform.OS !== 'web') {
-        const fallbackImageUri = 'https://images.pexels.com/photos/7828011/pexels-photo-7828011.jpeg';
-        setCapturedImage(fallbackImageUri);
-        setIsAnalyzing(true);
-  
-        try {
-          const result = await analyzeImage(fallbackImageUri);
-          setIsAnalyzing(false);
-  
-          if (result.detected) {
-            // Show modal for detected pest
-            setModalDetectionResult(result);
-            setShowPestDetectedModal(true);
-            // Update the displayed image to show the actual pest
-            if (result.species?.imageUri) {
-              setCapturedImage(result.species.imageUri);
-            }
-          } else {
-            setDetectionResults(result);
-          }
-        } catch (fallbackError) {
-          console.error('Fallback analysis failed:', fallbackError);
-          setIsAnalyzing(false);
-        }
-      }
     }
   };
 
@@ -236,6 +210,7 @@ export default function DetectScreen() {
     setDetectionResults(null);
     setShowPestDetectedModal(false);
     setModalDetectionResult(null);
+    setLiveDetections(null);
     refreshData();
   };
 
@@ -262,7 +237,6 @@ export default function DetectScreen() {
     
     setShowPestDetectedModal(false);
     
-    // Navigate to recommendations page with detection data
     router.push({
       pathname: '/recommendations',
       params: {
@@ -356,27 +330,34 @@ export default function DetectScreen() {
         <>
           {capturedImage ? (
             <View style={styles.resultContainer}>
-                  <View 
-                    style={{ width: '100%', height: '50%' }}
-                    onLayout={(e) => {
-                      setPreviewWidth(e.nativeEvent.layout.width);
-                      setPreviewHeight(e.nativeEvent.layout.height);
-                    }}
-                  >
-                    <Image 
-                      source={{ uri: capturedImage }}
-                      style={styles.capturedImage}
-                    />
-                    {detectionResults?.boundingBoxes && (
-                      <BoundingBox
-                        boxes={detectionResults.boundingBoxes}
-                        imageWidth={224}
-                        imageHeight={224}
-                        previewWidth={previewWidth}
-                        previewHeight={previewHeight}
-                      />
-                    )}
-                  </View>
+              <View 
+                style={{ width: '100%', height: '50%', position: 'relative' }}
+                onLayout={(e) => {
+                  setPreviewWidth(e.nativeEvent.layout.width);
+                  setPreviewHeight(e.nativeEvent.layout.height);
+                }}
+              >
+                <Image 
+                  source={{ uri: capturedImage }}
+                  style={styles.capturedImage}
+                />
+                {detectionResults?.boundingBoxes && previewWidth > 0 && previewHeight > 0 && (
+                  <BoundingBox
+                    boxes={detectionResults.boundingBoxes.map(box => ({
+                      x: box.x,
+                      y: box.y,
+                      width: box.width,
+                      height: box.height,
+                      label: box.class,
+                      confidence: box.confidence
+                    }))}
+                    imageWidth={detectionResults.imageWidth || 224}
+                    imageHeight={detectionResults.imageHeight || 224}
+                    previewWidth={previewWidth}
+                    previewHeight={previewHeight}
+                  />
+                )}
+              </View>
               
               {isAnalyzing ? (
                 <View style={styles.analyzingContainer}>
@@ -406,25 +387,50 @@ export default function DetectScreen() {
                   }}
                 >
                   <View style={styles.overlay}>
-                    <View style={styles.targetFrame} />
-                    {isScanning && detectionResults?.boundingBoxes && (
-                      <BoundingBox
-                        boxes={detectionResults.boundingBoxes}
-                        imageWidth={224}
-                        imageHeight={224}
-                        previewWidth={previewWidth}
-                        previewHeight={previewHeight}
-                      />
+                    {!isScanning && <View style={styles.targetFrame} />}
+                    {isScanning && liveDetections?.boundingBoxes && liveDetections.boundingBoxes.length > 0 && previewWidth > 0 && previewHeight > 0 && (
+                      <>
+                        {console.log('About to render boxes:', liveDetections.boundingBoxes.map(box => ({
+                          x: box.x,
+                          y: box.y,
+                          width: box.width,
+                          height: box.height,
+                          label: box.class,
+                          confidence: box.confidence
+                        })))}
+                        <BoundingBox
+                          boxes={liveDetections.boundingBoxes.map(box => ({
+                            x: box.x,
+                            y: box.y,
+                            width: box.width,
+                            height: box.height,
+                            label: box.class,
+                            confidence: box.confidence
+                          }))}
+                          imageWidth={liveDetections.imageWidth || 640}
+                          imageHeight={liveDetections.imageHeight || 480}
+                          previewWidth={previewWidth}
+                          previewHeight={previewHeight}
+                        />
+                      </>
                     )}
                     {isScanning && (
                       <View style={styles.scanningIndicator}>
-                        <Text style={styles.scanningText}>AI Scanning Active</Text>
+                        <Text style={styles.scanningText}>
+                          AI Scanning Active {liveDetections?.boundingBoxes?.length ? `- ${liveDetections.boundingBoxes.length} detected` : ''}
+                        </Text>
                       </View>
                     )}
                   </View>
                 </CameraView>
               ) : (
-                <View style={styles.camera}>
+                <View 
+                  style={[styles.camera, { position: 'relative' }]}
+                  onLayout={(e) => {
+                    setPreviewWidth(e.nativeEvent.layout.width);
+                    setPreviewHeight(e.nativeEvent.layout.height);
+                  }}
+                >
                   <video
                     ref={webVideoRef}
                     autoPlay
@@ -437,10 +443,28 @@ export default function DetectScreen() {
                     }}
                   />
                   <View style={styles.overlay}>
-                    <View style={styles.targetFrame} />
+                    {!isScanning && <View style={styles.targetFrame} />}
+                    {isScanning && liveDetections?.boundingBoxes && liveDetections.boundingBoxes.length > 0 && previewWidth > 0 && previewHeight > 0 && (
+                      <BoundingBox
+                        boxes={liveDetections.boundingBoxes.map(box => ({
+                          x: box.x,
+                          y: box.y,
+                          width: box.width,
+                          height: box.height,
+                          label: box.class,
+                          confidence: box.confidence
+                        }))}
+                        imageWidth={liveDetections.imageWidth || 640}
+                        imageHeight={liveDetections.imageHeight || 480}
+                        previewWidth={previewWidth}
+                        previewHeight={previewHeight}
+                      />
+                    )}
                     {isScanning && (
                       <View style={styles.scanningIndicator}>
-                        <Text style={styles.scanningText}>AI Scanning Active</Text>
+                        <Text style={styles.scanningText}>
+                          AI Scanning Active {liveDetections?.boundingBoxes?.length ? `- ${liveDetections.boundingBoxes.length} detected` : ''}
+                        </Text>
                       </View>
                     )}
                   </View>
@@ -555,22 +579,8 @@ const styles = StyleSheet.create({
   camera: {
     flex: 1,
   },
-  webFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    backgroundColor: '#e0e0e0',
-  },
-  webFallbackText: {
-    fontFamily: 'Poppins-Regular',
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 16,
-    color: '#555',
-  },
   overlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -640,7 +650,7 @@ const styles = StyleSheet.create({
   },
   capturedImage: {
     width: '100%',
-    height: '50%',
+    height: '100%',
   },
   analyzingContainer: {
     flex: 1,
