@@ -78,6 +78,17 @@ export default function DetectScreen() {
   }, [showPestDetectedModal, soundObject]);
 
   useEffect(() => {
+  const sub = pestDetectionService.onBoundingBox((scaledBox) => {
+    setBoundingBoxes([scaledBox]);
+
+    // Clear after 200–400ms so boxes don’t accumulate
+    setTimeout(() => setBoundingBoxes([]), 300);
+  });
+
+  return () => sub.remove();
+}, []);
+
+  useEffect(() => {
     // Listen for continuous scanning detections
     const handleDetection = (result: DetectionResult) => {
       if (result.detected) {
