@@ -70,9 +70,9 @@ export function DeviceStatus() {
           <View style={styles.metric}>
             {getWaterIcon()}
              <Text style={styles.metricText}>
-              {deviceStatus.waterLevel !== undefined && deviceStatus.waterLevel !== null
-              ? `${deviceStatus.waterLevel}%`
-              : 'N/A'}
+                {deviceStatus.waterLevel === 100 ? 'Full' :
+                 deviceStatus.waterLevel === 0 ? 'Empty' :
+                 'Unknown'}
              </Text>
           </View>
           
