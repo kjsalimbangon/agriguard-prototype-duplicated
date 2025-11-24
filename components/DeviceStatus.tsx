@@ -19,7 +19,7 @@ export function DeviceStatus() {
   }
 
     const level = deviceStatus.waterLevel;
-    const color = level > 50 ? '#2196F3' : level > 20 ? '#2196F3' : '#FF6B6B';
+    const color = level > 100 ? '#2196F3' : level > 0 ? '#F2C94C' : '#FF6B6B';
     return <Droplets size={16} color={color} />;
 
   };
