@@ -9,6 +9,7 @@ import { DetectionHistory } from '@/components/DetectionHistory';
 import { PestDetectedModal } from '@/components/PestDetectedModal';
 import { usePestDetection } from '@/hooks/usePestDetection';
 import { DetectionResult } from '@/services/PestDetectionService';
+import { usePestScanner } from '@/hooks/usePestScanner';
 import { BoundingBox } from '@/components/BoundingBox';
 import { router } from 'expo-router';
 
@@ -26,9 +27,8 @@ export default function DetectScreen() {
   const [activeTab, setActiveTab] = useState<'camera' | 'history'>('camera');
   const [showPestDetectedModal, setShowPestDetectedModal] = useState(false);
   const [modalDetectionResult, setModalDetectionResult] = useState<DetectionResult | null>(null);
-  const cameraRef = useRef(null);
-  const pestData = usePestData();
-  const scanner = usePestScanner(cameraRef, pestData.handleDetection);
+  const [cameraRef] = useRef(null);
+  const [scanner] = usePestScanner(cameraRef, pestData.handleDetection);
   const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null);
 
   const { 
@@ -377,7 +377,7 @@ export default function DetectScreen() {
                   <View style={styles.overlay}>
                     <View style={styles.targetFrame} />
 
-                    {isScanning && detectionResults?.boundingBoxes && (
+                    {isScanning && boundingBoxes && (
                       <BoundingBox
                         boxes={detectionResults.boundingBoxes}
                         imageWidth={224}         // model input
