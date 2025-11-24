@@ -301,6 +301,9 @@ export default function DetectScreen() {
           detection={notificationData}
           onDismiss={handleNotificationDismiss}
           onViewDetails={handleViewNotificationDetails}
+          onDismiss={() => setShowNotification(false)}
+          onViewDetails={() => {
+          setShowNotification(false)
         />
       )}
 
