@@ -7,7 +7,7 @@ import { DetectionResults } from '@/components/DetectionResults';
 import { PestNotification } from '@/components/PestNotification';
 import { DetectionHistory } from '@/components/DetectionHistory';
 import { PestDetectedModal } from '@/components/PestDetectedModal';
-import { usePestDetection } from '@/hooks/usePestDetection';
+import { usePestScanner } from '@/hooks/usePestScanner';
 import { DetectionResult } from '@/services/PestDetectionService';
 import { BoundingBox } from '@/components/BoundingBox';
 import { router } from 'expo-router';
