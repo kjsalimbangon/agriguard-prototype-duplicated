@@ -94,7 +94,6 @@ export default function DetectScreen() {
     if (result.detected) {
       setNotificationData(result);
       setShowNotification(true);
-      setPesticideImageUri(result.pesticideImageUri);
     }
 
     // Forward bounding box into the service
@@ -105,6 +104,7 @@ export default function DetectScreen() {
       });
     }
   };
+      pestDetectionService.onDetection(handleDetection);
     // This would be handled by the usePestDetection hook
     // The notification will show when continuous scanning detects a pest
   }, []);
