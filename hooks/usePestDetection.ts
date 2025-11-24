@@ -77,14 +77,14 @@ export function usePestDetection(cameraRef?: CameraRef) {
     await Promise.all([loadDetectionHistory(), loadPestDatabase(), loadStats()]);
   }, [loadDetectionHistory, loadPestDatabase, loadStats]);
 
-  // Original public analyzeImage kept (uses your existing TM pipeline)
   const analyzeImage = useCallback(async (imageUri: string): Promise<DetectionResult> => {
     const result = await pestDetectionService.analyzeImage(imageUri);
-
-    // refresh local DB/stats after classification
-    await Promise.all([loadDetectionHistory(), loadStats()]);
+    // Refresh data after analysis
+    loadDetectionHistory();
+    loadStats();
     return result;
   }, [loadDetectionHistory, loadStats]);
+
 
   // handleDetection callback (preserve existing behaviour)
   const handleDetection = useCallback((result: DetectionResult) => {
