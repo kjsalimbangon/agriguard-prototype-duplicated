@@ -28,7 +28,7 @@ export default function DetectScreen() {
   const [showPestDetectedModal, setShowPestDetectedModal] = useState(false);
   const [modalDetectionResult, setModalDetectionResult] = useState<DetectionResult | null>(null);
   const cameraRef = useRef(null);
-  const scanner = usePestScanner(cameraRef, pestData.handleDetection);
+  const scanner = usePestScanner(cameraRef, handleDetection);
   const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null);
 
   const { 
@@ -39,7 +39,7 @@ export default function DetectScreen() {
     detectionHistory,
     boundingBoxes,
     refreshData 
-  } = usePestScanner(cameraRef, pestData.handleDetection);
+  } = usePestScanner(cameraRef, handleDetection);
 
   useEffect(() => {
     requestPermission();
