@@ -7,6 +7,7 @@ import { DetectionResults } from '@/components/DetectionResults';
 import { PestNotification } from '@/components/PestNotification';
 import { DetectionHistory } from '@/components/DetectionHistory';
 import { PestDetectedModal } from '@/components/PestDetectedModal';
+import { usePestScanner } from '@/hooks/usePestScanner';
 import { usePestDetection } from '@/hooks/usePestDetection';
 import { DetectionResult } from '@/services/PestDetectionService';
 import { BoundingBox } from '@/components/BoundingBox';
@@ -29,6 +30,7 @@ export default function DetectScreen() {
   const [modalDetectionResult, setModalDetectionResult] = useState<DetectionResult | null>(null);
   const cameraRef = useRef(null);
   const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null);
+  const [liveDetections, setLiveDetections] = useState<DetectionResult | null>(null);
 
   // These do something.
   const webVideoRef = useRef<HTMLVideoElement>(null);
