@@ -1,5 +1,6 @@
 import { databaseManager, PestDetection, PestSpecies } from '@/database/DatabaseManager';
 import * as tf from '@tensorflow/tfjs';
+import * as cocoSsd from '@tensorflow-models/coco-ssd';
 import '@tensorflow/tfjs-react-native';
 import { bundleResourceIO, decodeJpeg } from '@tensorflow/tfjs-react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -40,6 +41,15 @@ class PestDetectionService {
   private model: tf.LayersModel | null = null;
   private labels: string[] = [];
 
+  private async loadCocoModel() {
+    if (!this.detectionModel) {
+      await tf.ready();
+      this.detectionModel = await cocoSsd.load();
+      console.log("🐞 COCO-SSD model loaded");
+    }
+    return this.detectionModel;
+  }
+  
   // 🧩 Load local TFJS model (Teachable Machine export)
   private async loadModel() {
     if (!this.model) {
@@ -103,6 +113,23 @@ class PestDetectionService {
       throw err;
     }
   }
+  private async detectObjects(imageUri: string) {
+  const coco = await this.loadCocoModel();
+  
+  const response = await fetch(imageUri);
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+
+  const tfImage = decodeJpeg(bytes);
+
+  const detections = await coco.detect(tfImage);
+  tf.dispose(tfImage);
+
+  // Only return insect-like classes (adjust if needed)
+  return detections.filter(d =>
+    ["insect", "bee", "butterfly", "spider"].includes(d.class)
+  );
+}
 
   // 🧠 Run AI-based detection
   private async aiDetection(imageUri: string): Promise<DetectionResult> {
