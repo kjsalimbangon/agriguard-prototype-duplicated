@@ -19,17 +19,6 @@ export default function DashboardScreen() {
     const refreshInterval = setInterval(() => {
       refreshData();
     }, 10000); // Refresh every 10 seconds
-    const sub = pestDetectionService.onBoundingBox((scaledBox) => {
-      setBoundingBoxes((prev) => [...prev, scaledBox]);
-  
-      // Auto-clear boxes each frame
-      setTimeout(() => {
-        setBoundingBoxes([]);
-      }, 500);
-    });
-  
-    return () => sub.remove();
-  }, []);
     return () => clearInterval(refreshInterval);
   }, [refreshData]);
 
