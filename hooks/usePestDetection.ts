@@ -111,7 +111,7 @@ export function usePestDetection(cameraRef?: CameraRef) {
         await tfRN.ready();
         // prefer rn-webgl backend if available
         try {
-          await tf.setBackend('rn-webgl');
+          await tf.setBackend('cpu');
         } catch (err) {
           // fallback to default
           console.warn('rn-webgl backend unavailable, using default backend', err);
