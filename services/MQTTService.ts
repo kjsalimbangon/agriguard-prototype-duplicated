@@ -283,6 +283,8 @@ class MQTTService {
     try {
       await this.client.unsubscribe('/esp32/sprinkler/status');
       await this.client.disconnect();
+      await this.client.unsubscribe('/esp32/sprinkler/sensor/tank');
+
       console.log('MQTT Service disconnected');
     } catch (error) {
       console.error('Error during MQTT disconnect:', error);
@@ -381,6 +383,7 @@ class MQTTService {
     }
 
     this.updateDeviceStatus({
+      tankStatus,
       waterLevel,
     });
 }
