@@ -8,7 +8,7 @@ import { PestNotification } from '@/components/PestNotification';
 import { DetectionHistory } from '@/components/DetectionHistory';
 import { PestDetectedModal } from '@/components/PestDetectedModal';
 import { usePestDetection } from '@/hooks/usePestDetection';
-import { DetectionResult } from '@/services/PestDetectionService';
+import { DetectionResult, pestDetectionService } from '@/services/PestDetectionService';
 import { router } from 'expo-router';
 
 export default function DetectScreen() {
