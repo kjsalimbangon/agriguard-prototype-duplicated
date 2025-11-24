@@ -28,6 +28,7 @@ export default function DetectScreen() {
   const [modalDetectionResult, setModalDetectionResult] = useState<DetectionResult | null>(null);
   const cameraRef = useRef(null);
   const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null);
+  const [liveDetections, setLiveDetections] = useState<DetectionResult | null>(null);
 
   const { 
     isScanning, 
