@@ -4,7 +4,6 @@ import * as tfRN from '@tensorflow/tfjs-react-native';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Platform } from 'react-native';
-
 import { databaseManager, PestDetection, PestSpecies } from '@/database/DatabaseManager';
 import { pestDetectionService, DetectionResult } from '@/services/PestDetectionService';
 
