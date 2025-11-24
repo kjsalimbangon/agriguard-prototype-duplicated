@@ -8,7 +8,7 @@ import { PestNotification } from '@/components/PestNotification';
 import { DetectionHistory } from '@/components/DetectionHistory';
 import { PestDetectedModal } from '@/components/PestDetectedModal';
 import { usePestDetection } from '@/hooks/usePestDetection';
-import { DetectionResult, pestDetectionService } from '@/services/PestDetectionService';
+import { DetectionResult } from '@/services/PestDetectionService';
 import { router } from 'expo-router';
 
 export default function DetectScreen() {
@@ -18,8 +18,6 @@ export default function DetectScreen() {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [detectionResults, setDetectionResults] = useState<DetectionResult | null>(null);
-  const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
-  const [boundingBoxes, setBoundingBoxes] = useState([]);
   const [showNotification, setShowNotification] = useState(false);
   const [notificationData, setNotificationData] = useState<DetectionResult | null>(null);
   const [activeTab, setActiveTab] = useState<'camera' | 'history'>('camera');
@@ -78,26 +76,16 @@ export default function DetectScreen() {
   }, [showPestDetectedModal, soundObject]);
 
   useEffect(() => {
-    setBoundingBoxes([]); 
-  }, []);
-
-  useEffect(() => {
     // Listen for continuous scanning detections
-  const handleDetection = (result: DetectionResult) => {
-    if (result.detected) {
-      setNotificationData(result);
-      setShowNotification(true);
-    }
+    const handleDetection = (result: DetectionResult) => {
+      if (result.detected) {
+        setNotificationData(result);
+        setShowNotification(true);
+        setPesticideImageUri(result.pesticideImageUri);
 
-    // Forward bounding box into the service
-    if (result.coco?.bbox) {
-      pestDetectionService.sendBoundingBox({
-        rawBox: result.coco.bbox,
-        cocoClass: result.pestType,
-      });
-    }
-  };
-      pestDetectionService.onDetection(handleDetection);
+      }
+    };
+
     // This would be handled by the usePestDetection hook
     // The notification will show when continuous scanning detects a pest
   }, []);
@@ -294,9 +282,6 @@ export default function DetectScreen() {
           detection={notificationData}
           onDismiss={handleNotificationDismiss}
           onViewDetails={handleViewNotificationDetails}
-          onDismiss={() => setShowNotification(false)}
-          onViewDetails={() => {setShowNotification(false)
-          }}
         />
       )}
 
@@ -363,36 +348,6 @@ export default function DetectScreen() {
                 >
                   <View style={styles.overlay}>
                     <View style={styles.targetFrame} />
-
-                    {boundingBoxes.map((box, i) => {
-                      return (
-                        <View
-                          key={i}
-                          style={{
-                            position: 'absolute',
-                            left: box.x,
-                            top: box.y,
-                            width: box.width,
-                            height: box.height,
-                            borderWidth: 2,
-                            borderColor: 'red',
-                            borderRadius: 4,
-                            justifyContent: 'flex-start',
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color: 'red',
-                              backgroundColor: 'rgba(0,0,0,0.6)',
-                              fontSize: 12,
-                              paddingHorizontal: 4,
-                            }}
-                          >
-                            {box.label}
-                          </Text>
-                        </View>
-                      );
-                    })}
                     {isScanning && (
                       <View style={styles.scanningIndicator}>
                         <Text style={styles.scanningText}>AI Scanning Active</Text>
