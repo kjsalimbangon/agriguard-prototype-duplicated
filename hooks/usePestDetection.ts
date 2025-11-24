@@ -231,6 +231,7 @@ export function usePestDetection(cameraRef?: CameraRef) {
                     confidence: det.score,
                   }
                 ]
+              };
               handleDetection(enriched);
             }
           } catch (cropErr) {
