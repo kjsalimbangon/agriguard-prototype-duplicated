@@ -22,6 +22,17 @@ export default function DashboardScreen() {
 
     return () => clearInterval(refreshInterval);
   }, [refreshData]);
+      const sub = pestDetectionService.onBoundingBox((scaledBox) => {
+      setBoundingBoxes((prev) => [...prev, scaledBox]);
+  
+      // Auto-clear boxes each frame
+      setTimeout(() => {
+        setBoundingBoxes([]);
+      }, 500);
+    });
+  
+    return () => sub.remove();
+  }, []);
 
   const formatLastDetection = () => {
     if (stats.totalDetections === 0) {
