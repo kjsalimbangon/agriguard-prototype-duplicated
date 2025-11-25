@@ -3,6 +3,7 @@ import * as tf from '@tensorflow/tfjs';
 import * as tfRN from '@tensorflow/tfjs-react-native';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { Platform } from 'react-native';
 import { pestDetectionService, DetectionResult } from '@/services/PestDetectionService';
 
 type CameraRef = MutableRefObject<any | null>;
@@ -18,11 +19,10 @@ export function usePestScanner(
   const isScanningRef = useRef(isScanning);
   const isProcessingRef = useRef(false);
 
-  const INTERVAL_MS = 700;
+  const INTERVAL_MS = 1000;  // Increased from 700ms
   const MIN_CONFIDENCE = 0.4;
   const allowedCocoClasses = new Set(["bird", "mouse"]);
 
-  // Keep ref in sync
   useEffect(() => {
     isScanningRef.current = isScanning;
   }, [isScanning]);
@@ -30,19 +30,47 @@ export function usePestScanner(
   // Init TensorFlow + COCO
   useEffect(() => {
     let mounted = true;
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
 
     const init = async () => {
       try {
+        console.log("Initializing TensorFlow and COCO...");
+        
         await tfRN.ready();
-        await tf.setBackend("rn-webgl").catch(() => {});
+        console.log("TensorFlow ready");
+        
+        // Try WebGL backend, fallback to default
+        try {
+          await tf.setBackend("rn-webgl");
+          console.log("WebGL backend set");
+        } catch (e) {
+          console.warn("WebGL unavailable, using default backend");
+        }
+        
         if (!mounted) return;
         setTfReady(true);
 
-        const model = await cocoSsd.load();
+        console.log("Loading COCO-SSD model...");
+        const model = await cocoSsd.load({
+          base: 'lite_mobilenet_v2'
+        });
+        
+        if (!model) {
+          throw new Error("COCO model returned null");
+        }
+        
+        console.log("COCO model loaded successfully");
         if (!mounted) return;
         setCocoModel(model);
+        
       } catch (err) {
-        console.error("Scanner init error:", err);
+        console.error(`Init failed (attempt ${retryCount + 1}/${MAX_RETRIES}):`, err);
+        
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          setTimeout(init, 2000);  // Retry after 2 seconds
+        }
       }
     };
 
@@ -50,80 +78,149 @@ export function usePestScanner(
     return () => { mounted = false; };
   }, []);
 
-  // Memoize the scan function to prevent recreating on every render
   const performScan = useCallback(async () => {
-    if (!cameraRef?.current || !cocoModel || isProcessingRef.current) return;
+    if (!cameraRef?.current) {
+      console.warn("No camera ref");
+      return;
+    }
+    
+    if (!cocoModel) {
+      console.warn("COCO model not loaded");
+      return;
+    }
+    
+    if (isProcessingRef.current) {
+      console.warn("Already processing, skipping frame");
+      return;
+    }
     
     isProcessingRef.current = true;
     let tensor: tf.Tensor3D | null = null;
 
     try {
+      // Take photo with URI (more reliable than base64)
+      console.log("Taking photo...");
       const photo = await cameraRef.current.takePictureAsync({
-        base64: true,
-        quality: 0.3,
-        skipProcessing: true,
+        quality: 0.7,
+        skipProcessing: false,
+        base64: false,  // Don't request base64
       });
 
-      if (!photo.base64 || !isScanningRef.current) return;
+      if (!photo?.uri) {
+        console.error("takePictureAsync returned no URI");
+        return;
+      }
 
-      const raw = tfRN.base64ToUint8Array(photo.base64);
+      console.log("Resizing image...");
+      
+      // Resize using ImageManipulator and get base64
+      const resized = await ImageManipulator.manipulateAsync(
+        photo.uri,
+        [{ resize: { width: 224, height: 224 } }],
+        { base64: true, compress: 0.8 }
+      );
+
+      if (!resized.base64) {
+        console.error("Image resize failed - no base64");
+        return;
+      }
+
+      // Decode base64 to tensor
+      console.log("Decoding to tensor...");
+      const raw = tfRN.base64ToUint8Array(resized.base64);
       tensor = tfRN.decodeJpeg(raw);
 
+      console.log("Running COCO detection...");
       const detections = await cocoModel.detect(tensor);
+      console.log(`Found ${detections.length} total detections`);
 
-      for (const det of detections) {
-        if (!isScanningRef.current) break;
-        if (det.score < MIN_CONFIDENCE) continue;
-        if (!allowedCocoClasses.has(det.class)) continue;
+      // Filter for relevant classes
+      const relevantDetections = detections.filter((det: any) => 
+        this.allowedCocoClasses.has(det.class) && 
+        det.score >= MIN_CONFIDENCE
+      );
 
-        const [x, y, w, h] = det.bbox.map((n: number) => Math.round(Math.max(0, n)));
+      console.log(`Filtered to ${relevantDetections.length} relevant detections`);
 
-        // Validate crop dimensions
-        if (w <= 0 || h <= 0) continue;
+      if (relevantDetections.length > 0) {
+        for (const det of relevantDetections) {
+          if (!isScanningRef.current) break;
+          
+          const [x, y, w, h] = det.bbox.map((n: number) => 
+            Math.round(Math.max(0, n))
+          );
 
-        const cropped = await ImageManipulator.manipulateAsync(
-          photo.uri,
-          [{ crop: { originX: x, originY: y, width: w, height: h } }],
-          { compress: 0.7 }
-        );
+          if (w <= 0 || h <= 0) continue;
 
-        const tmResult = await pestDetectionService.analyzeImage(cropped.uri);
+          console.log(`Cropping detection: [${x}, ${y}, ${w}, ${h}]`);
+          
+          const cropped = await ImageManipulator.manipulateAsync(
+            photo.uri,
+            [{ crop: { originX: x, originY: y, width: w, height: h } }],
+            { compress: 0.7 }
+          );
 
-        if (tmResult?.detected) {
-          const enriched: DetectionResult = {
-            ...tmResult,
-            coco: det,
-            boundingBoxes: [{
-              x: det.bbox[0],
-              y: det.bbox[1],
-              width: det.bbox[2],
-              height: det.bbox[3],
-              confidence: det.score
-            }]
-          };
+          const tmResult = await pestDetectionService.analyzeImage(cropped.uri);
 
-          onDetect(enriched);
+          if (tmResult?.detected) {
+            console.log("PEST DETECTED BIATCH:", tmResult.pestType);
+            
+            const enriched: DetectionResult = {
+              ...tmResult,
+              boundingBoxes: [{
+                x: det.bbox[0],
+                y: det.bbox[1],
+                width: det.bbox[2],
+                height: det.bbox[3],
+                confidence: det.score,
+                class: det.class
+              }]
+            };
+
+            onDetect(enriched);
+          }
         }
+      } else if (detections.length > 0) {
+        // Show detections even if not pest-detected (for debugging)
+        const result: DetectionResult = {
+          detected: false,
+          boundingBoxes: detections.slice(0, 5).map((det: any) => ({
+            x: det.bbox[0],
+            y: det.bbox[1],
+            width: det.bbox[2],
+            height: det.bbox[3],
+            confidence: det.score,
+            class: det.class
+          })),
+          recommendations: []
+        };
+        onDetect(result);
       }
+      
     } catch (err) {
-      console.error("Scanner loop error:", err);
+      console.error("Scan error:", err);
     } finally {
       if (tensor) tf.dispose(tensor);
       isProcessingRef.current = false;
     }
-  }, [cameraRef, cocoModel, onDetect, MIN_CONFIDENCE]);
+  }, [cameraRef, cocoModel, onDetect]);
 
-  // Continuous scanning loop with proper async handling
+  // Continuous scanning loop
   useEffect(() => {
-    if (!isScanning || !cameraRef?.current || !cocoModel) return;
+    if (!isScanning || !cameraRef?.current || !cocoModel) {
+      console.log("Scanning paused (isScanning:", isScanning, "cocoReady:", !!cocoModel, ")");
+      return;
+    }
 
+    console.log("Starting scan loop...");
+    
     let timeoutId: NodeJS.Timeout | null = null;
 
     const scheduleNext = () => {
       if (isScanningRef.current) {
         timeoutId = setTimeout(async () => {
           await performScan();
-          scheduleNext(); // Schedule next scan after current one completes
+          scheduleNext();
         }, INTERVAL_MS);
       }
     };
@@ -132,13 +229,20 @@ export function usePestScanner(
 
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
+      console.log("Scan loop cleaned up");
     };
   }, [isScanning, cameraRef, cocoModel, performScan]);
 
   return {
     isScanning,
-    startScanning: useCallback(() => setIsScanning(true), []),
-    stopScanning: useCallback(() => setIsScanning(false), []),
+    startScanning: useCallback(() => {
+      console.log("Start scanning pressed");
+      setIsScanning(true);
+    }, []),
+    stopScanning: useCallback(() => {
+      console.log("Stop scanning pressed");
+      setIsScanning(false);
+    }, []),
     tfReady,
     cocoModelReady: cocoModel !== null,
   };

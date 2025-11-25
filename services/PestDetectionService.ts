@@ -3,11 +3,10 @@ import * as tf from '@tensorflow/tfjs';
 import '@tensorflow/tfjs-react-native';
 import { bundleResourceIO, decodeJpeg } from '@tensorflow/tfjs-react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import * as tfRN from '@tensorflow/tfjs-react-native';
-import * as cocoSsd from '@tensorflow-models/coco-ssd';
+import * as FileSystem from 'expo-file-system';
 
-// Tensor config
 const BITMAP_DIMENSION = 224;
 const TENSORFLOW_CHANNEL = 3;
 
@@ -19,7 +18,6 @@ export interface DetectionResult {
   species?: PestSpecies;
   rawScores?: number[];
   index?: number;
-
   boundingBoxes?: Array<{
     x: number;
     y: number;
@@ -36,76 +34,186 @@ export interface DetectionResult {
 class PestDetectionService {
   private model: tf.LayersModel | null = null;
   private labels: string[] = [];
-  private cocoModel: any = null;
   private isProcessing: boolean = false;
-
-
-
-  // HERE FOR COCO TO DETECT WHAT IT NEEDS                        HEEEEEEEEEEEEEEEEERRRRRREEEEEEEEEEEE!!!!!!
-  
-  
-  
-  private allowedCocoClasses = new Set([
-    "bird", "mouse", "cat", "dog",
-    "bottle", "cup", "bowl", "vase", "chair", "laptop",
-    "person", "cell phone", "book", "clock", "scissors"
-  ]);
-
-  
-
-
   private MIN_CONFIDENCE = 0.4;
+  private tfInitialized: boolean = false;
+  private modelLoading: boolean = false;
+  private initializationPromise: Promise<void> | null = null;
+  private modelLoadPromise: Promise<tf.LayersModel> | null = null;
   cameraRef: any;
+  private cocoModel: any = null;
 
-  // 🧩 Load local TFJS model (Teachable Machine export)
-  private async loadModel() {
-    if (!this.model) {
-      await tf.ready();
-      console.log('🔧 TensorFlow backend:', tf.getBackend());
+  // Initialize TensorFlow ONCE with improved error handling
+  async initializeTensorFlow(): Promise<void> {
+    if (this.initializationPromise) {
+      console.log('⏳ TF initialization in progress, waiting...');
+      return this.initializationPromise;
+    }
 
+    if (this.tfInitialized) {
+      console.log('✅ TF already initialized');
+      return Promise.resolve();
+    }
+
+    this.initializationPromise = (async () => {
       try {
+        console.log('🚀 Starting TensorFlow initialization...');
+        
         if (Platform.OS === 'web') {
-          const MODEL_URL =
-            'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/model.json';
-          const META_URL =
-            'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/metadata.json';
+          await tf.ready();
+          console.log('✅ TensorFlow.js ready for web');
+        } else {
+          // Native: Initialize with retries
+          let retries = 3;
+          let lastError: Error | null = null;
+
+          while (retries > 0) {
+            try {
+              console.log(`🔄 Initializing TensorFlow React Native (attempt ${4 - retries}/3)...`);
+              await tfRN.ready();
+              console.log('✅ TensorFlow React Native ready');
+              
+              // Wait a bit for backend to stabilize
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              // Try to set backend
+              try {
+                await tf.setBackend('rn-webgl');
+                console.log('✅ WebGL backend set');
+              } catch (e) {
+                console.warn('⚠️ WebGL not available, using CPU backend');
+                await tf.setBackend('cpu');
+                console.log('✅ CPU backend set');
+              }
+              
+              // Verify backend is ready
+              await tf.ready();
+              const backend = tf.getBackend();
+              console.log('✅ TensorFlow backend active:', backend);
+              
+              this.tfInitialized = true;
+              return; // Success!
+              
+            } catch (err) {
+              lastError = err as Error;
+              console.error(`❌ Attempt ${4 - retries} failed:`, err);
+              retries--;
+              
+              if (retries > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            }
+          }
+          
+          // All retries failed
+          throw new Error(`TensorFlow initialization failed after 3 attempts: ${lastError?.message}`);
+        }
+        
+      } catch (err) {
+        console.error('❌ Failed to initialize TensorFlow:', err);
+        this.initializationPromise = null;
+        this.tfInitialized = false;
+        throw err;
+      }
+    })();
+
+    return this.initializationPromise;
+  }
+
+  // Load model with proper asset handling for Android
+  async loadModel(): Promise<tf.LayersModel> {
+    // Return existing model
+    if (this.model) {
+      console.log('✅ Model already loaded');
+      return this.model;
+    }
+
+    // Wait if already loading
+    if (this.modelLoadPromise) {
+      console.log('⏳ Model loading in progress, waiting...');
+      return this.modelLoadPromise;
+    }
+
+    this.modelLoadPromise = (async () => {
+      try {
+        // CRITICAL: Ensure TensorFlow is initialized FIRST
+        console.log('🔍 Ensuring TensorFlow is ready...');
+        await this.initializeTensorFlow();
+        
+        // Additional wait to ensure backend is stable
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        console.log('📦 Loading Teachable Machine model...');
+
+        if (Platform.OS === 'web') {
+          const MODEL_URL = 'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/model.json';
+          const META_URL = 'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/metadata.json';
+          
+          console.log('🌐 Loading from web URL...');
           this.model = await tf.loadLayersModel(MODEL_URL);
-          // Fetch metadata.json for labels
+          
           const metaResponse = await fetch(META_URL);
           const metadata = await metaResponse.json();
           this.labels = metadata.labels;
+          
         } else {
-          const modelJson = require('../assets/model/model.json');
-          const modelWeights = require('../assets/model/weights.bin');
-          const metadata = require('../assets/model/metadata.json');
-          this.model = await tf.loadLayersModel(bundleResourceIO(modelJson, modelWeights));
+          console.log('📱 MINIMAL TEST - Loading from web only...');
+          
+          // Force using fetch with full error details
+          const MODEL_URL = 'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/model.json';
+          
+          console.log('Testing network...');
+          const testFetch = await fetch(MODEL_URL);
+          console.log('Network status:', testFetch.status, testFetch.statusText);
+          const testJson = await testFetch.json();
+          console.log('Model JSON fetched:', Object.keys(testJson));
+          
+          console.log('Calling tf.loadLayersModel...');
+          this.model = await tf.loadLayersModel(MODEL_URL);
+          console.log('Model loaded!');
+          
+          const META_URL = 'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/metadata.json';
+          const metaResponse = await fetch(META_URL);
+          const metadata = await metaResponse.json();
           this.labels = metadata.labels;
+          console.log('Labels:', this.labels);
         }
 
-        console.log('✅ Model loaded successfully');
-        console.log('📋 Loaded labels:', this.labels);
+        console.log('✅ Model loaded successfully!');
+        console.log('📐 Model input shape:', this.model.inputs[0].shape);
+        
+        return this.model;
+        
       } catch (err) {
-        console.error('⚠️ Failed to load model:', err);
+        console.error('❌ Model load failed:', err);
+        console.error('Stack:', err instanceof Error ? err.stack : 'No stack');
+        this.model = null;
+        this.modelLoadPromise = null;
+        throw err;
       }
-    }
-    return this.model;
+    })();
+
+    return this.modelLoadPromise;
   }
 
-  // 🖼 Convert image URI → normalized tensor
+  // Convert image URI → normalized tensor
   private async uriToTensor(uri: string): Promise<tf.Tensor4D> {
     try {
+      console.log('🖼️ Converting image to tensor...');
+      
       const processed = await ImageManipulator.manipulateAsync(
         uri,
         [{ resize: { width: BITMAP_DIMENSION, height: BITMAP_DIMENSION } }],
-        { base64: true }
+        { base64: true, compress: 0.8 }
       );
 
-      if (!processed.base64) throw new Error('Image conversion failed: no base64 data.');
+      if (!processed.base64) {
+        throw new Error('Image conversion failed: no base64 data');
+      }
 
       let decodedImage: tf.Tensor3D;
 
       if (Platform.OS === 'web') {
-        // 🌐 Web: Convert base64 to canvas, then to tensor
         const image = new Image();
         image.src = `data:image/jpeg;base64,${processed.base64}`;
 
@@ -114,7 +222,6 @@ class PestDetectionService {
           image.onerror = reject;
         });
 
-        // Draw to canvas
         const canvas = document.createElement('canvas');
         canvas.width = BITMAP_DIMENSION;
         canvas.height = BITMAP_DIMENSION;
@@ -122,13 +229,11 @@ class PestDetectionService {
         if (!ctx) throw new Error('Failed to get canvas context');
         ctx.drawImage(image, 0, 0, BITMAP_DIMENSION, BITMAP_DIMENSION);
 
-        // Convert canvas to tensor
         decodedImage = tf.browser.fromPixels(canvas, TENSORFLOW_CHANNEL)
           .toFloat()
           .div(127.5)
           .sub(1) as tf.Tensor3D;
       } else {
-        // 📱 Native: Decode base64 JPEG directly
         const rawImageData = tf.util.encodeString(processed.base64, 'base64').buffer;
         const imageBytes = new Uint8Array(rawImageData);
 
@@ -138,83 +243,87 @@ class PestDetectionService {
           .sub(1) as tf.Tensor3D;
       }
 
-      // Reshape to 4D tensor [batch, height, width, channels]
       const tensor4D = decodedImage
         .resizeBilinear([BITMAP_DIMENSION, BITMAP_DIMENSION])
         .reshape([1, BITMAP_DIMENSION, BITMAP_DIMENSION, TENSORFLOW_CHANNEL]);
 
       return tensor4D as tf.Tensor4D;
+      
     } catch (err) {
-      console.error('Failed to convert URI to tensor:', err);
+      console.error('❌ Failed to convert URI to tensor:', err);
       throw err;
     }
   }
 
-  // 🧠 Run AI-based detection
+  // Run AI-based detection
   private async aiDetection(imageUri: string): Promise<DetectionResult> {
-    const model = await this.loadModel();
-    const input = await this.uriToTensor(imageUri);
+    try {
+      console.log('🤖 Starting AI detection...');
+      
+      const model = await this.loadModel();
+      
+      if (!model) {
+        throw new Error('Model failed to load');
+      }
 
-    // Run prediction
-    const predictions = (model.predict(input) as tf.Tensor).dataSync();
-    tf.dispose(input);
+      const input = await this.uriToTensor(imageUri);
 
-    // Labels from Teachable Machine (must match training order)
-    const labels = this.labels || ['Unknown'];
-    const maxIndex = predictions.indexOf(Math.max(...predictions));
-    const pestLabel = labels[maxIndex] ?? 'Unknown';
-    const confidence = Math.round(predictions[maxIndex] * 100);
+      console.log('🔮 Running prediction...');
+      const predictions = (model.predict(input) as tf.Tensor).dataSync();
+      tf.dispose(input);
 
-    const isNoPest = pestLabel.toLowerCase().includes('no pest');
+      const labels = this.labels || ['Unknown'];
+      const maxIndex = predictions.indexOf(Math.max(...predictions));
+      const pestLabel = labels[maxIndex] ?? 'Unknown';
+      const confidence = Math.round(predictions[maxIndex] * 100);
 
-    const sorted = [...predictions].sort((a, b) => b - a);
-    const secondConfidence = Math.round(sorted[1] * 100);
-    const diff = confidence - secondConfidence;
+      const isNoPest = pestLabel.toLowerCase().includes('no pest');
+      const sorted = [...predictions].sort((a, b) => b - a);
+      const secondConfidence = Math.round(sorted[1] * 100);
+      const diff = confidence - secondConfidence;
+      const likelyNoise = confidence < 90 || diff < 10;
 
-    // Detection threshold logic
-    const likelyNoise = confidence < 90 || diff < 10;
+      console.log(`📊 Prediction: ${pestLabel} ${confidence}%`);
 
-    console.log('🐛 Prediction scores:', Array.from(predictions));
-    console.log('🔍 Max index:', maxIndex, 'Label:', pestLabel, 'Confidence:', confidence);
+      if (isNoPest || likelyNoise) {
+        return {
+          detected: false,
+          pestType: '',
+          confidence,
+          recommendations: ['Continue monitoring'],
+          rawScores: Array.from(predictions),
+          index: maxIndex,
+        };
+      }
 
-    if (isNoPest || likelyNoise) {
+      const species = await databaseManager.getPestSpeciesByName(pestLabel);
+
       return {
-        detected: false,
-        pestType: '',
+        detected: true,
+        pestType: pestLabel,
         confidence,
-        recommendations: ['Continue monitoring', 'No immediate action required'],
+        recommendations: species ? species.treatment.split('. ') : ['Apply treatment'],
+        species,
         rawScores: Array.from(predictions),
         index: maxIndex,
       };
+      
+    } catch (err) {
+      console.error('❌ AI detection failed:', err);
+      throw err;
     }
-
-    const species = await databaseManager.getPestSpeciesByName(pestLabel);
-
-    return {
-      detected: true,
-      pestType: pestLabel,
-      confidence,
-      recommendations: species
-        ? species.treatment.split('. ')
-        : ['Apply appropriate treatment', 'Monitor affected areas'],
-      species,
-      rawScores: Array.from(predictions),
-      index: maxIndex,
-    };
   }
 
-  // 🔍 Public API
   async analyzeImage(imageUri: string): Promise<DetectionResult> {
     const result = await this.aiDetection(imageUri);
 
     if (result.detected) {
-      const pestImageUri = result.species?.imageUri || imageUri;
       const detection: Omit<PestDetection, 'id'> = {
         pestType: result.pestType,
         confidence: result.confidence,
         timestamp: new Date().toISOString(),
-        imageUri: pestImageUri,
-        notes: 'Detected via TensorFlow.js Teachable Machine model',
+        imageUri: result.species?.imageUri || imageUri,
+        notes: 'Detected via TensorFlow.js',
       };
       await databaseManager.addPestDetection(detection);
     }
@@ -234,57 +343,72 @@ class PestDetectionService {
     return await databaseManager.getDetectionStats();
   }
 
-  // 📡 Continuous Scanning Support
+  // Continuous Scanning
   private detectionCallbacks: ((result: DetectionResult) => void)[] = [];
   private scanningInterval: NodeJS.Timer | null = null;
   private isScanning: boolean = false;
-  private currentScanImageUri: string | null = null;
 
-  // ➕ Register callback
   addDetectionCallback(callback: (result: DetectionResult) => void) {
     if (!this.detectionCallbacks.includes(callback)) {
       this.detectionCallbacks.push(callback);
     }
   }
 
-  // ➖ Remove callback
   removeDetectionCallback(callback: (result: DetectionResult) => void) {
     this.detectionCallbacks = this.detectionCallbacks.filter(cb => cb !== callback);
   }
 
-  // 📸 Set the image URI for continuous scanning
-  setScanImageUri(uri: string) {
-    this.currentScanImageUri = uri;
-  }
-
-  // ▶️ Start continuous scanning with a specific image
-  // In PestDetectionService.ts
-  // ▶️ Start continuous scanning
-  startContinuousScanning(cameraRef?: any) {
-    if (this.isScanning) return;
+  async startContinuousScanning(cameraRef?: any) {
+    if (this.isScanning) {
+      console.log('⚠️ Already scanning');
+      return;
+    }
 
     if (cameraRef) {
       this.cameraRef = cameraRef;
     }
 
-    this.isScanning = true;
-    console.log("Continuous scanning started");
-    console.log("Platform:", Platform.OS);
+    console.log('🎬 Starting continuous scanning...');
 
+    // CRITICAL: Pre-initialize everything
+    try {
+      console.log('🔧 Pre-initializing TensorFlow...');
+      await this.initializeTensorFlow();
+      
+      console.log('📦 Pre-loading model...');
+      await this.loadModel();
+      
+      console.log('✅ Ready to scan!');
+    } catch (err) {
+      console.error('❌ Cannot start scanning:', err);
+      Alert.alert('Error', 'Failed to initialize AI model. Please restart the app.');
+      return;
+    }
+
+    this.isScanning = true;
+
+    // Choose scanning method
     if (Platform.OS === 'web') {
-      console.log("Starting web-based scanning");
+      console.log('🌐 Starting web scanning');
       this.startWebScanning();
     } else {
-      console.log("Starting native camera scanning");
+      console.log('📱 Starting native scanning');
       this.startNativeScanning();
     }
   }
 
-  // 🌐 Web scanning using video element
+  // Web scanning using COCO-SSD
   private async startWebScanning() {
-    // Ensure COCO model is loaded
-    if (!this.cocoModel) {
-      await this.initializeCocoModel();
+    try {
+      if (!this.cocoModel) {
+        console.log("📦 Loading COCO model for web...");
+        const cocoSsdModule = await import('@tensorflow-models/coco-ssd');
+        this.cocoModel = await cocoSsdModule.load({ base: 'lite_mobilenet_v2' });
+        console.log("✅ COCO model loaded");
+      }
+    } catch (err) {
+      console.error("❌ Failed to load COCO:", err);
+      return;
     }
 
     this.scanningInterval = setInterval(async () => {
@@ -295,42 +419,31 @@ class PestDetectionService {
         const videoElement = document.querySelector('video') as HTMLVideoElement;
         
         if (!videoElement) {
-          console.warn("No video element found on page");
           this.isProcessing = false;
           return;
         }
 
-        console.log("Have a video element, getting frame...");
-
-        // Create canvas to capture video frame
         const canvas = document.createElement('canvas');
         canvas.width = videoElement.videoWidth || BITMAP_DIMENSION;
         canvas.height = videoElement.videoHeight || BITMAP_DIMENSION;
         const ctx = canvas.getContext('2d');
         
         if (!ctx) {
-          console.warn("Could not get canvas context");
           this.isProcessing = false;
           return;
         }
         
-        // Draw current video frame to canvas
         ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
         
-        // Get image data for TensorFlow
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const tensor = tf.browser.fromPixels(canvas);
+        const detections = await this.cocoModel.detect(tensor);
+        tensor.dispose();
         
-        // Detect objects using COCO-SSD
-        const detections = await this.detectObjectsFromImageData(imageData);
-        
-        console.log(`Found ${detections.length} detections`);
-        
-        // Create proper DetectionResult object
         const result: DetectionResult = {
           detected: detections.length > 0,
           pestType: detections.length > 0 ? detections[0].class : undefined,
           confidence: detections.length > 0 ? Math.round(detections[0].score * 100) : undefined,
-          boundingBoxes: detections.map(det => ({
+          boundingBoxes: detections.slice(0, 5).map((det: any) => ({
             x: det.bbox[0],
             y: det.bbox[1],
             width: det.bbox[2],
@@ -343,193 +456,136 @@ class PestDetectionService {
           recommendations: []
         };
         
-        console.log("Calling callbacks with result:", result);
-        
-        // Notify callbacks with detections
         this.detectionCallbacks.forEach(cb => {
           try {
             cb(result);
           } catch (err) {
-            console.error("Error in detection callback:", err);
+            console.error("❌ Callback error:", err);
           }
         });
         
       } catch (err) {
-        console.error("Web scan error:", err);
+        console.error("❌ Web scan error:", err);
       } finally {
         this.isProcessing = false;
       }
     }, 3000);
   }
 
-  // 📱 Native scanning using camera ref
   private async startNativeScanning() {
-    if (!this.cameraRef) {
-      console.warn("No camera reference for native scanning");
+    if (!this.cameraRef?.current) {
+      console.warn('⚠️ No camera reference');
       return;
     }
 
-    // Ensure COCO model is loaded
-    if (!this.cocoModel) {
-      console.log("Loading COCO model for native...");
-      await this.initializeCocoModel();
+    if (!this.model) {
+      console.error('❌ Model not loaded');
+      return;
     }
 
+    console.log('▶️ Starting scan loop...');
+
     this.scanningInterval = setInterval(async () => {
-      if (this.isProcessing) return;
+      if (this.isProcessing) {
+        return;
+      }
+      
       this.isProcessing = true;
 
-      let tensor: tf.Tensor3D | null = null;
+      let imageTensor: tf.Tensor3D | null = null;
+      let tensor: tf.Tensor4D | null = null;
 
       try {
         if (!this.cameraRef.current) {
-          console.warn("Camera ref became null during scanning");
           this.isProcessing = false;
           return;
         }
 
         const photo = await this.cameraRef.current.takePictureAsync({
-          quality: 0.5,
-          skipProcessing: true,
+          quality: 0.6,
           base64: true,
         });
 
-        if (!photo?.uri || !photo.base64) {
-          console.warn("No photo URI or base64 returned");
+        if (!photo?.base64) {
           this.isProcessing = false;
           return;
         }
 
-        // Convert to tensor and detect
         const raw = tfRN.base64ToUint8Array(photo.base64);
-        tensor = tfRN.decodeJpeg(raw);
+        imageTensor = tfRN.decodeJpeg(raw);
         
-        const detections = await this.cocoModel.detect(tensor);
-        
-        console.log(`Found ${detections.length} detections`);
-        
-        // Filter for relevant classes
-        const relevantDetections = detections.filter((det: any) => 
-          this.allowedCocoClasses.has(det.class) && 
-          det.score >= this.MIN_CONFIDENCE
+        const resized = tf.image.resizeBilinear(
+          imageTensor.expandDims(0) as tf.Tensor4D,
+          [BITMAP_DIMENSION, BITMAP_DIMENSION]
         );
+        
+        tensor = resized.toFloat().div(127.5).sub(1) as tf.Tensor4D;
 
-        // Create proper DetectionResult object
-        const result: DetectionResult = {
-          detected: relevantDetections.length > 0,
-          pestType: relevantDetections.length > 0 ? relevantDetections[0].class : undefined,
-          confidence: relevantDetections.length > 0 ? Math.round(relevantDetections[0].score * 100) : undefined,
-          boundingBoxes: relevantDetections.map((det: any) => ({
-            x: det.bbox[0],
-            y: det.bbox[1],
-            width: det.bbox[2],
-            height: det.bbox[3],
-            confidence: det.score,
-            class: det.class
-          })),
-          imageWidth: photo.width,
-          imageHeight: photo.height,
-          uri: photo.uri,
-          recommendations: []
-        };
+        const predictions = (this.model!.predict(tensor) as tf.Tensor).dataSync();
+        
+        const maxIndex = predictions.indexOf(Math.max(...predictions));
+        const pestLabel = this.labels[maxIndex] ?? 'Unknown';
+        const confidence = Math.round(predictions[maxIndex] * 100);
 
-        console.log("Calling callbacks with result:", result);
+        const isNoPest = pestLabel.toLowerCase().includes('no pest');
 
-        // Notify callbacks with detections
-        this.detectionCallbacks.forEach(cb => {
-          try {
-            cb(result);
-          } catch (err) {
-            console.error("Error in detection callback:", err);
-          }
-        });
+        if (confidence >= 75 && !isNoPest) {
+          const species = await databaseManager.getPestSpeciesByName(pestLabel);
+
+          const result: DetectionResult = {
+            detected: true,
+            pestType: pestLabel,
+            confidence,
+            recommendations: species ? species.treatment.split('. ') : [],
+            species,
+            rawScores: Array.from(predictions),
+            boundingBoxes: [],
+          };
+
+          console.log('🐛 PEST DETECTED:', pestLabel);
+
+          const detection: Omit<PestDetection, 'id'> = {
+            pestType: pestLabel,
+            confidence,
+            timestamp: new Date().toISOString(),
+            imageUri: photo.uri,
+            notes: 'Continuous scanning detection',
+          };
+          await databaseManager.addPestDetection(detection);
+
+          this.detectionCallbacks.forEach(cb => cb(result));
+        } else {
+          this.detectionCallbacks.forEach(cb => cb({
+            detected: false,
+            confidence,
+            recommendations: [],
+            boundingBoxes: [],
+          }));
+        }
         
       } catch (err) {
-        console.error("Native scan error:", err);
+        console.error('❌ Scan error:', err);
       } finally {
         if (tensor) tf.dispose(tensor);
+        if (imageTensor) imageTensor.dispose();
         this.isProcessing = false;
       }
     }, 3000);
   }
 
-  // Helper method to detect objects from ImageData (for web)
-  private async detectObjectsFromImageData(imageData: ImageData) {
-    if (!this.cocoModel) {
-      throw new Error("COCO model not loaded");
-    }
-
-    // Convert ImageData to tensor
-    const tensor = tf.browser.fromPixels(imageData);
-    
-    try {
-      const detections = await this.cocoModel.detect(tensor as any);
-      
-      // Filter for relevant classes
-      return detections.filter(det => 
-        this.allowedCocoClasses.has(det.class) && 
-        det.score >= this.MIN_CONFIDENCE
-      );
-    } finally {
-      tensor.dispose();
-    }
-  }
-
-  // Initialize COCO model if not already loaded
-  // Initialize COCO model if not already loaded
-  private async initializeCocoModel() {
-    if (this.cocoModel) return;
-
-    try {
-      if (Platform.OS === 'web') {
-        // Web: Use @tensorflow/tfjs and @tensorflow-models/coco-ssd
-        console.log("Loading COCO model for web...");
-        
-        // Ensure TensorFlow.js is ready for web
-        await tf.ready();
-        
-        // Dynamically import for web to avoid bundling issues
-        const cocoSsdModule = await import('@tensorflow-models/coco-ssd');
-        this.cocoModel = await cocoSsdModule.load({
-          base: 'lite_mobilenet_v2' // Use lite model for faster loading
-        });
-        
-        console.log("COCO model loaded successfully for web");
-      } else {
-        // Native: Use TensorFlow.js React Native
-        console.log("Loading COCO model for native...");
-        
-        await tfRN.ready();
-        await tf.setBackend("rn-webgl").catch(() => {
-          console.warn("WebGL backend not available, using default");
-        });
-        
-        this.cocoModel = await cocoSsd.load({
-          base: 'lite_mobilenet_v2'
-        });
-        
-        console.log("COCO model loaded successfully for native");
-      }
-    } catch (err) {
-      console.error("Failed to load COCO model:", err);
-      throw err;
-    }
-  }
-  
-  // ⏹ Stop continuous scanning
   stopContinuousScanning() {
     if (!this.isScanning) return;
+    
+    console.log('⏹️ Stopping scan...');
     this.isScanning = false;
     this.isProcessing = false;
-
-    console.log('Scanning stopped');
   
     if (this.scanningInterval) {
       clearInterval(this.scanningInterval);
       this.scanningInterval = null;
     }
     
-    this.cameraRef = null; // Clear camera ref
+    this.cameraRef = null;
   }
 }
 

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Image, Platform } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Image, Platform, ActivityIndicator } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { Audio } from 'expo-av';
-import { Camera, RefreshCw, Image as ImageIcon, CircleAlert as AlertCircle, Play, Square } from 'lucide-react-native';
+import { Camera, RefreshCw, Play, Square, AlertCircle } from 'lucide-react-native';
 import { DetectionResults } from '@/components/DetectionResults';
 import { PestNotification } from '@/components/PestNotification';
 import { DetectionHistory } from '@/components/DetectionHistory';
@@ -26,10 +26,12 @@ export default function DetectScreen() {
   const [activeTab, setActiveTab] = useState<'camera' | 'history'>('camera');
   const [showPestDetectedModal, setShowPestDetectedModal] = useState(false);
   const [modalDetectionResult, setModalDetectionResult] = useState<DetectionResult | null>(null);
+  const [liveDetections, setLiveDetections] = useState<DetectionResult | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [initError, setInitError] = useState<string | null>(null);
+  
   const cameraRef = useRef(null);
   const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null);
-  const [liveDetections, setLiveDetections] = useState<DetectionResult | null>(null);
-
   const webVideoRef = useRef<HTMLVideoElement>(null);
   const [webStream, setWebStream] = useState<MediaStream | null>(null);
 
@@ -41,28 +43,63 @@ export default function DetectScreen() {
     detectionHistory,
     refreshData 
   } = usePestDetection();
-  
-  // Fixed detection callback - properly using pestDetectionService
+
+  // Initialize TensorFlow on mount (CRITICAL for native)
   useEffect(() => {
-    const handleDetection = (result: DetectionResult) => {
-      console.log('Live detection received:', result);
-      
-      if (result.boundingBoxes && result.boundingBoxes.length > 0) {
-        console.log('Setting live detections with', result.boundingBoxes.length, 'boxes');
-        setLiveDetections(result);
-        
-        // Show notification if pest detected during scanning
-        if (result.detected) {
-          setNotificationData(result);
-          setShowNotification(true);
+    let mounted = true;
+
+    const initialize = async () => {
+      try {
+        console.log('🚀 Initializing app...');
+        setIsInitializing(true);
+        setInitError(null);
+
+        // Initialize TensorFlow (needed for both web and native)
+        await pestDetectionService.initializeTensorFlow();
+        console.log('✅ TensorFlow initialized');
+
+        // Load model (for single photo analysis)
+        if (Platform.OS !== 'web') {
+          await pestDetectionService.loadModel();
+          console.log('✅ Model loaded');
+        } else {
+          // Web will load COCO model when scanning starts
+          console.log('✅ Web ready (COCO will load on scan)');
         }
-      } else {
-        // Clear detections if none found
-        setLiveDetections(null);
+
+        if (mounted) {
+          setIsInitializing(false);
+          console.log('✅ App ready!');
+        }
+      } catch (error) {
+        console.error('❌ Initialization failed:', error);
+        if (mounted) {
+          setInitError(error instanceof Error ? error.message : 'Failed to initialize');
+          setIsInitializing(false);
+        }
       }
     };
 
-    // Register callback with the service
+    initialize();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Detection callback
+  useEffect(() => {
+    const handleDetection = (result: DetectionResult) => {
+      console.log('📡 Detection received:', result);
+      
+      setLiveDetections(result);
+      
+      if (result.detected) {
+        setNotificationData(result);
+        setShowNotification(true);
+      }
+    };
+
     pestDetectionService.addDetectionCallback(handleDetection);
 
     return () => {
@@ -70,10 +107,10 @@ export default function DetectScreen() {
     };
   }, []);
 
+  // Permissions
   useEffect(() => {
     requestPermission();
     
-    // Load sound file
     const loadSound = async () => {
       try {
         const { sound } = await Audio.Sound.createAsync(
@@ -94,6 +131,7 @@ export default function DetectScreen() {
     };
   }, []);
 
+  // Play sound on detection
   useEffect(() => {
     const playSound = async () => {
       if (showPestDetectedModal && soundObject) {
@@ -108,6 +146,7 @@ export default function DetectScreen() {
     playSound();
   }, [showPestDetectedModal, soundObject]);
 
+  // Web camera
   useEffect(() => {
     if (Platform.OS === 'web' && !capturedImage) {
       const startWebCamera = async () => {
@@ -149,10 +188,9 @@ export default function DetectScreen() {
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.8,
           base64: false,
-          skipProcessing: false,
         });
   
-        console.log('Photo captured:', photo.uri);
+        console.log('📸 Photo captured');
         setCapturedImage(photo.uri);
         setIsCapturing(false);
         setIsAnalyzing(true);
@@ -181,26 +219,18 @@ export default function DetectScreen() {
         setIsCapturing(false);
         setIsAnalyzing(true);
   
-        try {
-          const result = await analyzeImage(capturedImageUri);
-          setIsAnalyzing(false);
+        const result = await analyzeImage(capturedImageUri);
+        setIsAnalyzing(false);
   
-          if (result.detected) {
-            setModalDetectionResult(result);
-            setShowPestDetectedModal(true);
-            if (result.species?.imageUri) {
-              setCapturedImage(result.species.imageUri);
-            }
-          } else {
-            setDetectionResults(result);
-          }
-        } catch (error) {
-          console.error('Web analysis failed:', error);
-          setIsAnalyzing(false);
+        if (result.detected) {
+          setModalDetectionResult(result);
+          setShowPestDetectedModal(true);
+        } else {
+          setDetectionResults(result);
         }
       }
     } catch (error) {
-      console.error('Failed to take picture:', error);
+      console.error('Failed to capture:', error);
       setIsCapturing(false);
     }
   };
@@ -253,29 +283,59 @@ export default function DetectScreen() {
     });
   };
 
-  if (!hasPermission) {
+  // Show loading screen while initializing
+  if (isInitializing) {
     return (
       <View style={styles.permissionContainer}>
-        <AlertCircle size={48} color="#8BA840" />
+        <ActivityIndicator size="large" color="#8BA840" />
         <Text style={styles.permissionText}>
-          We need camera permission to detect pests
+          Initializing AI Model...
+        </Text>
+        <Text style={styles.permissionSubtext}>
+          This may take a few moments
+        </Text>
+      </View>
+    );
+  }
+
+  // Show error if initialization failed
+  if (initError) {
+    return (
+      <View style={styles.permissionContainer}>
+        <AlertCircle size={48} color="#FF6B6B" />
+        <Text style={styles.permissionText}>
+          Failed to Initialize
+        </Text>
+        <Text style={styles.permissionSubtext}>
+          {initError}
         </Text>
         <TouchableOpacity 
           style={styles.permissionButton}
-          onPress={requestPermission}
+          onPress={() => {
+            setInitError(null);
+            setIsInitializing(true);
+            // Retry initialization
+            pestDetectionService.initializeTensorFlow()
+              .then(() => pestDetectionService.loadModel())
+              .then(() => setIsInitializing(false))
+              .catch(e => {
+                setInitError(e.message);
+                setIsInitializing(false);
+              });
+          }}
         >
-          <Text style={styles.permissionButtonText}>Grant Permission</Text>
+          <Text style={styles.permissionButtonText}>Retry</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  if (!hasPermission.granted) {
+  if (!hasPermission?.granted) {
     return (
       <View style={styles.permissionContainer}>
         <AlertCircle size={48} color="#8BA840" />
         <Text style={styles.permissionText}>
-          Camera permission is needed for pest detection
+          Camera permission needed for pest detection
         </Text>
         <TouchableOpacity 
           style={styles.permissionButton}
@@ -341,31 +401,12 @@ export default function DetectScreen() {
                   source={{ uri: capturedImage }}
                   style={styles.capturedImage}
                 />
-                {detectionResults?.boundingBoxes && previewWidth > 0 && previewHeight > 0 && (
-                  <BoundingBox
-                    boxes={detectionResults.boundingBoxes.map(box => ({
-                      x: box.x,
-                      y: box.y,
-                      width: box.width,
-                      height: box.height,
-                      label: box.class,
-                      confidence: box.confidence
-                    }))}
-                    imageWidth={detectionResults.imageWidth || 224}
-                    imageHeight={detectionResults.imageHeight || 224}
-                    previewWidth={previewWidth}
-                    previewHeight={previewHeight}
-                  />
-                )}
               </View>
               
               {isAnalyzing ? (
                 <View style={styles.analyzingContainer}>
-                  <RefreshCw size={36} color="#8BA840" style={styles.spinningIcon} />
+                  <ActivityIndicator size="large" color="#8BA840" />
                   <Text style={styles.analyzingText}>Analyzing with AI...</Text>
-                  <Text style={styles.analyzingSubtext}>
-                    Using TensorFlow JS for pest detection
-                  </Text>
                 </View>
               ) : detectionResults ? (
                 <DetectionResults 
@@ -388,36 +429,10 @@ export default function DetectScreen() {
                 >
                   <View style={styles.overlay}>
                     {!isScanning && <View style={styles.targetFrame} />}
-                    {isScanning && liveDetections?.boundingBoxes && liveDetections.boundingBoxes.length > 0 && previewWidth > 0 && previewHeight > 0 && (
-                      <>
-                        {console.log('About to render boxes:', liveDetections.boundingBoxes.map(box => ({
-                          x: box.x,
-                          y: box.y,
-                          width: box.width,
-                          height: box.height,
-                          label: box.class,
-                          confidence: box.confidence
-                        })))}
-                        <BoundingBox
-                          boxes={liveDetections.boundingBoxes.map(box => ({
-                            x: box.x,
-                            y: box.y,
-                            width: box.width,
-                            height: box.height,
-                            label: box.class,
-                            confidence: box.confidence
-                          }))}
-                          imageWidth={liveDetections.imageWidth || 640}
-                          imageHeight={liveDetections.imageHeight || 480}
-                          previewWidth={previewWidth}
-                          previewHeight={previewHeight}
-                        />
-                      </>
-                    )}
                     {isScanning && (
                       <View style={styles.scanningIndicator}>
                         <Text style={styles.scanningText}>
-                          AI Scanning Active {liveDetections?.boundingBoxes?.length ? `- ${liveDetections.boundingBoxes.length} detected` : ''}
+                          🤖 AI Scanning Active
                         </Text>
                       </View>
                     )}
@@ -463,7 +478,7 @@ export default function DetectScreen() {
                     {isScanning && (
                       <View style={styles.scanningIndicator}>
                         <Text style={styles.scanningText}>
-                          AI Scanning Active {liveDetections?.boundingBoxes?.length ? `- ${liveDetections.boundingBoxes.length} detected` : ''}
+                          🤖 AI Scanning Active {liveDetections?.boundingBoxes?.length ? `- ${liveDetections.boundingBoxes.length} detected` : ''}
                         </Text>
                       </View>
                     )}
@@ -491,7 +506,7 @@ export default function DetectScreen() {
                 
                 <TouchableOpacity 
                   style={styles.scanToggleButton}
-                  onPress={isScanning ? stopScanning : () => startScanning(cameraRef)}
+                  onPress={isScanning ? stopScanning : () => startScanning(Platform.OS === 'web' ? undefined : cameraRef)}
                 >
                   {isScanning ? (
                     <Square size={24} color="#FF6B6B" />
@@ -502,7 +517,7 @@ export default function DetectScreen() {
               </View>
               
               <Text style={styles.instructionText}>
-                Position the pest within the frame and tap capture for AI analysis, or enable continuous AI scanning
+                Position pest in frame and tap capture, or enable continuous scanning
               </Text>
             </View>
           )}
@@ -555,12 +570,19 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   permissionText: {
-    fontFamily: 'Poppins-Regular',
+    fontFamily: 'Poppins-SemiBold',
     fontSize: 16,
     textAlign: 'center',
     marginTop: 16,
-    marginBottom: 24,
     color: '#555',
+  },
+  permissionSubtext: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 24,
+    color: '#888',
   },
   permissionButton: {
     backgroundColor: '#8BA840',
@@ -604,7 +626,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-SemiBold',
     fontSize: 14,
     color: 'white',
-    textAlign: 'center',
   },
   controlsContainer: {
     flexDirection: 'row',
@@ -658,19 +679,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'white',
   },
-  spinningIcon: {
-    marginBottom: 16,
-  },
   analyzingText: {
     fontFamily: 'Poppins-SemiBold',
     fontSize: 18,
     color: '#555',
-    marginBottom: 8,
-  },
-  analyzingSubtext: {
-    fontFamily: 'Poppins-Regular',
-    fontSize: 14,
-    color: '#8BA840',
-    textAlign: 'center',
+    marginTop: 16,
   },
 });
