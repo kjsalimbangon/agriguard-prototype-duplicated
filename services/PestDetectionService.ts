@@ -457,7 +457,13 @@ class PestDetectionService {
       const resultJson = await response.json();
 
       const detections = resultJson?.predictions ?? [];
-
+    try {
+        const videoElement = document.querySelector('video') as HTMLVideoElement;
+        
+        if (!videoElement) {
+          this.isProcessing = false;
+          return;
+        }
       const result: DetectionResult = {
         detected: detections.length > 0,
         confidence: detections[0]?.confidence ?? 0,
@@ -476,13 +482,19 @@ class PestDetectionService {
       };
 
       // Trigger callbacks
-      this.detectionCallbacks.forEach(cb => cb(result));
+      this.detectionCallbacks.forEach(cb => {
+          try {
+            cb(result);
+          } catch (err) {
+            console.error("❌ Callback error:", err);
+          }
+        });
 
     } catch (err) {
       console.error("Roboflow scanning error:", err);
+    } finally {
+        this.isProcessing = false;
     }
-
-    this.isProcessing = false;
   }, 1200); // 1.2 seconds per frame
 }
 
