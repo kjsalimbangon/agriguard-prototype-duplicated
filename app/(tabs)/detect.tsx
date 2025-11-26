@@ -432,7 +432,7 @@ export default function DetectScreen() {
                     {isScanning && (
                       <View style={styles.scanningIndicator}>
                         <Text style={styles.scanningText}>
-                          🤖 AI Scanning Active
+                          AI Scanning Active
                         </Text>
                       </View>
                     )}
