@@ -6,6 +6,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { Platform, Alert } from 'react-native';
 import * as tfRN from '@tensorflow/tfjs-react-native';
 import * as FileSystem from 'expo-file-system';
+import Roboflow from 'roboflow';
 
 const BITMAP_DIMENSION = 224;
 const TENSORFLOW_CHANNEL = 3;
@@ -397,6 +398,8 @@ class PestDetectionService {
     }
   }
 
+//
+  
   private async startWebScanning() {
   this.scanningInterval = setInterval(async () => {
     if (this.isProcessing) return;
