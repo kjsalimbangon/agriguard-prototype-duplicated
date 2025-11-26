@@ -41,7 +41,7 @@ class PestDetectionService {
   private initializationPromise: Promise<void> | null = null;
   private modelLoadPromise: Promise<tf.LayersModel> | null = null;
   cameraRef: any;
-  private cocoModel: any = null;
+  //private cocoModel: any = null;
 
   // Initialize TensorFlow ONCE with improved error handling
   async initializeTensorFlow(): Promise<void> {
