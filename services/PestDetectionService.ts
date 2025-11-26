@@ -443,7 +443,7 @@ class PestDetectionService {
 
       // Roboflow API call
       const response = await fetch(
-        `https://serverless.roboflow.com/binkyboi/workflows/find-rats-snails-rice-black-bugs-and-grasshoppers`,
+        `https://serverless.roboflow.com/binkyboi/workflows/find-rats-snails-rice-black-bugs-and-grasshoppers-2`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
