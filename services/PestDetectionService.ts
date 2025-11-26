@@ -398,7 +398,7 @@ class PestDetectionService {
   }
 
   // Web scanning using COCO-SSD
-  private async startWebScanning() {
+  /*private async startWebScanning() {
     try {
       if (!this.cocoModel) {
         console.log("📦 Loading COCO model for web...");
@@ -470,7 +470,7 @@ class PestDetectionService {
         this.isProcessing = false;
       }
     }, 3000);
-  }
+  }*/
 
   private async startNativeScanning() {
     if (!this.cameraRef?.current) {
