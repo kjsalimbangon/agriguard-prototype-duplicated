@@ -63,8 +63,8 @@ export default function DetectScreen() {
           await pestDetectionService.loadModel();
           console.log('✅ Model loaded');
         } else {
-          // Web will load COCO model when scanning starts
-          console.log('✅ Web ready (COCO will load on scan)');
+          // Web will load Roboflow model when scanning starts
+          console.log('✅ Web ready (Roboflow will load on scan)');
         }
 
         if (mounted) {
