@@ -4,7 +4,6 @@ import '@tensorflow/tfjs-react-native';
 import { bundleResourceIO, decodeJpeg } from '@tensorflow/tfjs-react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Platform, Alert } from 'react-native';
-import RoboFlow from 'roboflow';
 import * as tfRN from '@tensorflow/tfjs-react-native';
 import * as FileSystem from 'expo-file-system';
 
