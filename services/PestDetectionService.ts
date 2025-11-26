@@ -457,13 +457,7 @@ class PestDetectionService {
       const resultJson = await response.json();
 
       const detections = resultJson?.predictions ?? [];
-    try {
-        const videoElement = document.querySelector('video') as HTMLVideoElement;
-        
-        if (!videoElement) {
-          this.isProcessing = false;
-          return;
-        }
+
       const result: DetectionResult = {
         detected: detections.length > 0,
         confidence: detections[0]?.confidence ?? 0,
