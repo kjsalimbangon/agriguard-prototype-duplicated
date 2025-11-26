@@ -397,6 +397,95 @@ class PestDetectionService {
     }
   }
 
+  private async startWebScanning() {
+  this.scanningInterval = setInterval(async () => {
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+
+    try {
+      const video = document.querySelector("video") as HTMLVideoElement;
+      if (!video) {
+        this.isProcessing = false;
+        return;
+      }
+
+      // Draw current frame to canvas
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        this.isProcessing = false;
+        return;
+      }
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Convert to image blob
+      const blob = await new Promise<Blob | null>(resolve =>
+        canvas.toBlob(resolve, "image/jpeg")
+      );
+
+      if (!blob) {
+        this.isProcessing = false;
+        return;
+      }
+
+      // Convert blob → base64
+      const reader = new FileReader();
+      const base64 = await new Promise<string>(res => {
+        reader.onloadend = () => res(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+
+      // Remove prefix "data:image/jpeg;base64,"
+      const base64Data = base64.split(",")[1];
+
+      // Roboflow API call
+      const response = await fetch(
+        `https://serverless.roboflow.com/binkyboi/workflows/find-rats-snails-rice-black-bugs-and-grasshoppers`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            api_key: "y77kJVHKaY1uxX08C5OZ",
+            inputs: { image: { type: "base64", value: base64Data } }
+          })
+        }
+      );
+
+      const resultJson = await response.json();
+
+      const detections = resultJson?.predictions ?? [];
+
+      const result: DetectionResult = {
+        detected: detections.length > 0,
+        confidence: detections[0]?.confidence ?? 0,
+        pestType: detections[0]?.class ?? "",
+        boundingBoxes: detections.map((d: any) => ({
+          x: d.x - d.width / 2,
+          y: d.y - d.height / 2,
+          width: d.width,
+          height: d.height,
+          confidence: d.confidence,
+          class: d.class
+        })),
+        imageWidth: canvas.width,
+        imageHeight: canvas.height,
+        recommendations: []
+      };
+
+      // Trigger callbacks
+      this.detectionCallbacks.forEach(cb => cb(result));
+
+    } catch (err) {
+      console.error("Roboflow scanning error:", err);
+    }
+
+    this.isProcessing = false;
+  }, 1200); // 1.2 seconds per frame
+}
+
   // Web scanning using COCO-SSD
   /*private async startWebScanning() {
     try {
