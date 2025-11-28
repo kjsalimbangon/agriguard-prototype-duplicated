@@ -69,6 +69,7 @@ class PestDetectionService {
           while (retries > 0) {
             try {
               console.log(`Initializing TensorFlow React Native (attempt ${4 - retries}/3)...`);
+              await import('@tensorflow/tfjs-react-native');
               await tf.ready();
               console.log('TensorFlow React Native ready');
               
