@@ -121,79 +121,68 @@ class PestDetectionService {
 
   // Load model with proper asset handling for Android
   async loadModel(): Promise<tf.LayersModel> {
-    // Return existing model
-    if (this.model) {
-      console.log('Model already loaded');
-      return this.model;
-    }
+  if (this.model) {
+    console.log('Model already loaded');
+    return this.model;
+  }
 
-    // Wait if already loading
-    if (this.modelLoadPromise) {
-      console.log('Model loading in progress, waiting...');
-      return this.modelLoadPromise;
-    }
-
-    this.modelLoadPromise = (async () => {
-      try {
-        // CRITICAL: Ensure TensorFlow is initialized FIRST
-        console.log('Ensuring TensorFlow is ready...');
-        await this.initializeTensorFlow();
-        
-        // Additional wait to ensure backend is stable
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        console.log('Loading Teachable Machine model...');
-
-        if (Platform.OS === 'web') {
-          const MODEL_URL = 'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/model.json';
-          const META_URL = 'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/metadata.json';
-          
-          console.log('Loading from web URL...');
-          this.model = await tf.loadLayersModel(MODEL_URL);
-          
-          const metaResponse = await fetch(META_URL);
-          const metadata = await metaResponse.json();
-          this.labels = metadata.labels;
-          
-        } else {
-          console.log('MINIMAL TEST - Loading from web only...');
-          
-          // Force using fetch with full error details
-          const MODEL_URL = 'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/model.json';
-          
-          console.log('Testing network...');
-          const testFetch = await fetch(MODEL_URL);
-          console.log('Network status:', testFetch.status, testFetch.statusText);
-          const testJson = await testFetch.json();
-          console.log('Model JSON fetched:', Object.keys(testJson));
-          
-          console.log('Calling tf.loadLayersModel...');
-          this.model = await tf.loadLayersModel(MODEL_URL);
-          console.log('Model loaded!');
-          
-          const META_URL = 'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/metadata.json';
-          const metaResponse = await fetch(META_URL);
-          const metadata = await metaResponse.json();
-          this.labels = metadata.labels;
-          console.log('Labels:', this.labels);
-        }
-
-        console.log('Model loaded successfully!');
-        console.log('Model input shape:', this.model.inputs[0].shape);
-        
-        return this.model;
-        
-      } catch (err) {
-        console.error('Model load failed:', err);
-        console.error('Stack:', err instanceof Error ? err.stack : 'No stack');
-        this.model = null;
-        this.modelLoadPromise = null;
-        throw err;
-      }
-    })();
-
+  if (this.modelLoadPromise) {
+    console.log('Model loading in progress, waiting...');
     return this.modelLoadPromise;
   }
+
+  this.modelLoadPromise = (async () => {
+    try {
+      console.log('Ensuring TensorFlow is ready...');
+      await this.initializeTensorFlow();
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      console.log('Loading Teachable Machine model...');
+
+      if (Platform.OS === 'web') {
+        // ---- WEB LOADING (REMOTE) ----
+        const MODEL_URL =
+          'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/model.json';
+        const META_URL =
+          'https://teachablemachine.withgoogle.com/models/CBLMG2sAF/metadata.json';
+
+        console.log('Loading model via URL...');
+        this.model = await tf.loadLayersModel(MODEL_URL);
+
+        const metaResponse = await fetch(META_URL);
+        const metadata = await metaResponse.json();
+        this.labels = metadata.labels;
+
+      } else {
+        // ---- MOBILE LOADING (LOCAL MODEL) ----
+        console.log('Loading LOCAL model files...');
+
+        const modelJson = require('../assets/model/model.json');
+        const modelWeights = require('../assets/model/weights.bin');
+        const metadata = require('../assets/model/metadata.json');
+
+        this.model = await tf.loadLayersModel(
+          bundleResourceIO(modelJson, modelWeights)
+        );
+
+        this.labels = metadata.labels;
+
+        console.log('📦 Local model loaded successfully');
+      }
+
+      console.log('Model input shape:', this.model.inputs[0].shape);
+      return this.model;
+
+    } catch (err) {
+      console.error('Model load failed:', err);
+      this.model = null;
+      this.modelLoadPromise = null;
+      throw err;
+    }
+  })();
+
+  return this.modelLoadPromise;
+}
 
   // Convert image URI → normalized tensor
   private async uriToTensor(uri: string): Promise<tf.Tensor4D> {
