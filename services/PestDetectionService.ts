@@ -4,7 +4,7 @@ import '@tensorflow/tfjs-react-native';
 import { bundleResourceIO, decodeJpeg } from '@tensorflow/tfjs-react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Platform, Alert } from 'react-native';
-import * as tfRN from '@tensorflow/tfjs-react-native';
+//import * as tfRN from '@tensorflow/tfjs-react-native';
 import * as FileSystem from 'expo-file-system';
 
 const BITMAP_DIMENSION = 224;
@@ -69,7 +69,7 @@ class PestDetectionService {
           while (retries > 0) {
             try {
               console.log(`Initializing TensorFlow React Native (attempt ${4 - retries}/3)...`);
-              await tfRN.ready();
+              await tf.ready();
               console.log('TensorFlow React Native ready');
               
               // Wait a bit for backend to stabilize
