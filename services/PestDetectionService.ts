@@ -322,49 +322,67 @@ class PestDetectionService {
         }
       );
 
-      const resultJson = await response.json();
-      const detections = resultJson?.predictions ?? [];
+       // 1. Object Detection via Roboflow API
+  const resultJson = await response.json();
+  const detections = resultJson?.predictions ?? [];
 
-      const results = await this.aiDetection(imageUri);
-      
-      const result: DetectionResult = {
-        detected: detections.length > 0,
-        confidence: detections[0]?.confidence ? Math.round(detections[0].confidence * 100) : 0,
-        pestType: detections[0]?.class ?? '',
-        boundingBoxes: detections.map((d: any) => ({
-          x: d.x - d.width / 2,
-          y: d.y - d.height / 2,
-          width: d.width,
-          height: d.height,
-          confidence: d.confidence,
-          class: d.class
-        })),
-        imageWidth: BITMAP_DIMENSION,
-        imageHeight: BITMAP_DIMENSION,
-        recommendations: [],
-        uri: imageUri
-      };
+  // 2. Image Classification via local model
+  const classificationResult = await this.aiDetection(imageUri);
 
-      if (result.detected && result.pestType && results.detected) {
-        const species = await databaseManager.getPestSpeciesByName(result.pestType);
-        if (species) {
-          result.species = species;
-          result.recommendations = species.treatment.split('. ');
-        }
-        const pestImageUri = result.species?.imageUri || imageUri;
-        const detection: Omit<PestDetection, 'id'> = {
-          pestType: results.pestType,
-          confidence: results.confidence,
-          timestamp: new Date().toISOString(),
-          imageUri: species?.imageUri || imageUri,
-          notes: 'Detected via Roboflow',
-        };
-        await databaseManager.addPestDetection(detection);
-      }
+  // 3. Merge results
+  const detected = detections.length > 0 || classificationResult.detected;
 
-      return result;
-      
-    } catch (err) {
+  // Prefer Roboflow for bounding boxes if available
+  const boundingBoxes = detections.map((d: any) => ({
+    x: d.x - d.width / 2,
+    y: d.y - d.height / 2,
+    width: d.width,
+    height: d.height,
+    confidence: d.confidence,
+    class: d.class
+  }));
+
+  // Prefer Roboflow for pestType if available; fallback to classification
+  const pestType = detections[0]?.class ?? classificationResult.pestType ?? '';
+  const confidence = detections[0]?.confidence
+    ? Math.round(detections[0].confidence * 100)
+    : classificationResult.confidence ?? 0;
+
+  const result: DetectionResult = {
+    detected,
+    confidence,
+    pestType,
+    boundingBoxes,
+    imageWidth: BITMAP_DIMENSION,
+    imageHeight: BITMAP_DIMENSION,
+    recommendations: [],
+    uri: imageUri,
+    species: null,
+  };
+
+  // 4. Add species info if detected
+  if (detected && pestType) {
+    const species = await databaseManager.getPestSpeciesByName(pestType);
+    if (species) {
+      result.species = species;
+      result.recommendations = species.treatment.split('. ');
+    }
+
+    // 5. Insert into database
+    const detection: Omit<PestDetection, 'id'> = {
+      pestType,
+      confidence,
+      timestamp: new Date().toISOString(),
+      imageUri: result.species?.imageUri || imageUri,
+      notes: detections.length > 0
+        ? 'Detected via Roboflow'
+        : 'Detected via TensorFlow.js Teachable Machine model',
+    };
+    await databaseManager.addPestDetection(detection);
+  }
+
+  return result;
+} catch (err) {
       console.error('Analysis failed:', err);
       throw err;
     }
