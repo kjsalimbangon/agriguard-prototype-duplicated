@@ -243,6 +243,59 @@ class PestDetectionService {
     }
   }
 
+    // 🧠 Run AI-based detection
+  private async aiDetection(imageUri: string): Promise<DetectionResult> {
+    const model = await this.loadModel();
+    const input = await this.uriToTensor(imageUri);
+
+    // Run prediction
+    const predictions = (model.predict(input) as tf.Tensor).dataSync();
+    tf.dispose(input);
+
+    // Labels from Teachable Machine (must match training order)
+    const labels = this.labels || ['Unknown'];
+    const maxIndex = predictions.indexOf(Math.max(...predictions));
+    const pestLabel = labels[maxIndex] ?? 'Unknown';
+    const confidence = Math.round(predictions[maxIndex] * 100);
+
+    const isNoPest = pestLabel.toLowerCase().includes('no pest');
+
+    const sorted = [...predictions].sort((a, b) => b - a);
+    const secondConfidence = Math.round(sorted[1] * 100);
+    const diff = confidence - secondConfidence;
+
+    // Detection threshold logic
+    const likelyNoise = confidence < 90 || diff < 10;
+
+    console.log('🐛 Prediction scores:', Array.from(predictions));
+    console.log('🔍 Max index:', maxIndex, 'Label:', pestLabel, 'Confidence:', confidence);
+
+    if (isNoPest || likelyNoise) {
+      return {
+        detected: false,
+        pestType: '',
+        confidence,
+        recommendations: ['Continue monitoring', 'No immediate action required'],
+        rawScores: Array.from(predictions),
+        index: maxIndex,
+      };
+    }
+
+    const species = await databaseManager.getPestSpeciesByName(pestLabel);
+
+    return {
+      detected: true,
+      pestType: pestLabel,
+      confidence,
+      recommendations: species
+        ? species.treatment.split('. ')
+        : ['Apply appropriate treatment', 'Monitor affected areas'],
+      species,
+      rawScores: Array.from(predictions),
+      index: maxIndex,
+    };
+  }
+
   async analyzeImage(imageUri: string): Promise<DetectionResult> {
     console.log('Analyzing image with Roboflow...');
     
@@ -272,6 +325,8 @@ class PestDetectionService {
       const resultJson = await response.json();
       const detections = resultJson?.predictions ?? [];
 
+      const results = await this.aiDetection(imageUri);
+      
       const result: DetectionResult = {
         detected: detections.length > 0,
         confidence: detections[0]?.confidence ? Math.round(detections[0].confidence * 100) : 0,
@@ -290,13 +345,13 @@ class PestDetectionService {
         uri: imageUri
       };
 
-      if (result.detected && result.pestType) {
+      if (result.detected && result.pestType && results.detected) {
         const species = await databaseManager.getPestSpeciesByName(result.pestType);
         if (species) {
           result.species = species;
           result.recommendations = species.treatment.split('. ');
         }
-
+        const pestImageUri = result.species?.imageUri || imageUri;
         const detection: Omit<PestDetection, 'id'> = {
           pestType: result.pestType,
           confidence: result.confidence,
