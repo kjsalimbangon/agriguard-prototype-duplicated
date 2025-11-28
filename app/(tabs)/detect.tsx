@@ -44,7 +44,7 @@ export default function DetectScreen() {
     refreshData 
   } = usePestDetection();
 
-  // Initialize TensorFlow on mount (CRITICAL for native)
+  /*// Initialize TensorFlow on mount (CRITICAL for native)
   useEffect(() => {
     let mounted = true;
 
@@ -85,7 +85,7 @@ export default function DetectScreen() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, []);*/
 
   // Detection callback
   useEffect(() => {
@@ -283,7 +283,7 @@ export default function DetectScreen() {
     });
   };
 
-  // Show loading screen while initializing
+  /*// Show loading screen while initializing
   if (isInitializing) {
     return (
       <View style={styles.permissionContainer}>
@@ -328,7 +328,7 @@ export default function DetectScreen() {
         </TouchableOpacity>
       </View>
     );
-  }
+  }*/
 
   if (!hasPermission?.granted) {
     return (
