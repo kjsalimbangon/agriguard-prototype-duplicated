@@ -353,8 +353,8 @@ class PestDetectionService {
         }
         const pestImageUri = result.species?.imageUri || imageUri;
         const detection: Omit<PestDetection, 'id'> = {
-          pestType: result.pestType,
-          confidence: result.confidence,
+          pestType: results.pestType,
+          confidence: results.confidence,
           timestamp: new Date().toISOString(),
           imageUri: species?.imageUri || imageUri,
           notes: 'Detected via Roboflow',
