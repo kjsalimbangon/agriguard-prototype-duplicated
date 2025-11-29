@@ -42,7 +42,7 @@ class PestDetectionService {
   private modelLoadPromise: Promise<tf.LayersModel> | null = null;
   cameraRef: any;
 
-  // Initialize TensorFlow ONCE with improved error handling
+  /*// Initialize TensorFlow ONCE with improved error handling
   async initializeTensorFlow(): Promise<void> {
     if (this.initializationPromise) {
       console.log('TF initialization in progress, waiting...');
@@ -118,7 +118,7 @@ class PestDetectionService {
     })();
 
     return this.initializationPromise;
-  }
+  }*/
 
   // Load model with proper asset handling for Android
   async loadModel(): Promise<tf.LayersModel> {
