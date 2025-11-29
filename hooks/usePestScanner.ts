@@ -23,7 +23,7 @@ export function usePestScanner(
     isScanningRef.current = isScanning;
   }, [isScanning]);
 
-  // Init TensorFlow ONLY (no COCO)
+  /*// Init TensorFlow ONLY (no COCO)
   useEffect(() => {
     let mounted = true;
 
@@ -50,7 +50,7 @@ export function usePestScanner(
 
     init();
     return () => { mounted = false; };
-  }, []);
+  }, []);*/
 
   const performScan = useCallback(async () => {
     if (!cameraRef?.current) {
