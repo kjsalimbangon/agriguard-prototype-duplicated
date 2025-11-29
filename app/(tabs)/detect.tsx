@@ -407,6 +407,9 @@ export default function DetectScreen() {
                 <View style={styles.analyzingContainer}>
                   <ActivityIndicator size="large" color="#8BA840" />
                   <Text style={styles.analyzingText}>Analyzing with AI...</Text>
+                  <Text style={styles.analyzingSubtext}>
+                    Using TensorFlow JS for pest detection
+                  </Text>
                 </View>
               ) : detectionResults ? (
                 <DetectionResults 
