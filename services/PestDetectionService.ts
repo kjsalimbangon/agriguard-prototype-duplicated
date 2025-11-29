@@ -134,11 +134,11 @@ class PestDetectionService {
 
   this.modelLoadPromise = (async () => {
     try {
-      console.log('Ensuring TensorFlow is ready...');
-      await this.initializeTensorFlow();
-      await new Promise(resolve => setTimeout(resolve, 500));
+      //console.log('Ensuring TensorFlow is ready...');
+      //await this.initializeTensorFlow();
+      //await new Promise(resolve => setTimeout(resolve, 500));
 
-      console.log('Loading Teachable Machine model...');
+      //console.log('Loading Teachable Machine model...');
 
       if (Platform.OS === 'web') {
         // ---- WEB LOADING (REMOTE) ----
