@@ -312,12 +312,12 @@ class PestDetectionService {
       }
 
       const response = await fetch(
-        'https://serverless.roboflow.com/kevin-john-salimbangon-vinc/workflows/find-rats',
+        'https://serverless.roboflow.com/binkyboi/workflows/find-rats-snails-rice-black-bugs-and-grasshoppers-2',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            api_key: 'sItBAjEPHW0FgkRKRWWQ',
+            api_key: 'y77kJVHKaY1uxX08C5OZ',
             inputs: { image: { type: 'base64', value: processed.base64 } }
           })
         }
@@ -485,12 +485,12 @@ class PestDetectionService {
 
         // Roboflow API call
         const response = await fetch(
-          `https://serverless.roboflow.com/kevin-john-salimbangon-vinc/workflows/find-rats`,
+          `https://serverless.roboflow.com/binkyboi/workflows/find-rats-snails-rice-black-bugs-and-grasshoppers-2`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              api_key: "sItBAjEPHW0FgkRKRWWQ",
+              api_key: "y77kJVHKaY1uxX08C5OZ",
               inputs: { image: { type: "base64", value: base64Data } }
             })
           }
@@ -567,12 +567,12 @@ class PestDetectionService {
 
         // Roboflow API call
         const response = await fetch(
-          'https://serverless.roboflow.com/kevin-john-salimbangon-vinc/workflows/find-rats',
+          'https://serverless.roboflow.com/binkyboi/workflows/find-rats-snails-rice-black-bugs-and-grasshoppers-2',
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              api_key: 'sItBAjEPHW0FgkRKRWWQ',
+              api_key: 'y77kJVHKaY1uxX08C5OZ',
               inputs: { image: { type: 'base64', value: photo.base64 } }
             })
           }
