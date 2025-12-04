@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "expo start --tunnel",
+    "dev": "expo start",
+    "tunnel": "expo start --tunnel"
     "build:web": "expo export --platform web",
     "lint": "expo lint",
     "build:android": "EAS_NO_VCS=1 eas build --platform android --profile preview",
